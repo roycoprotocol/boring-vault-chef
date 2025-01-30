@@ -6,11 +6,12 @@ import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Hol
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {FixedPointMathLib} from "@solmate/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
-import {ERC20} from "@solmate/tokens/ERC20.sol";
 import {BeforeTransferHook} from "src/interfaces/BeforeTransferHook.sol";
 import {Auth, Authority} from "@solmate/auth/Auth.sol";
+import {ERC20} from "@solmate/tokens/ERC20.sol";
+import {BoringChef} from "src/boring-chef/BoringChef.sol";
 
-contract BoringVault is ERC20, Auth, ERC721Holder, ERC1155Holder {
+contract BoringVault is BoringChef, Auth, ERC721Holder, ERC1155Holder {
     using Address for address;
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
@@ -30,7 +31,7 @@ contract BoringVault is ERC20, Auth, ERC721Holder, ERC1155Holder {
     //============================== CONSTRUCTOR ===============================
 
     constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
-        ERC20(_name, _symbol, _decimals)
+        BoringChef(_name, _symbol, _decimals)
         Auth(_owner, Authority(address(0)))
     {}
 
