@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.21;
 
+import {ERC20} from "@solmate/tokens/ERC20.sol";
+
 /// @title BoringChef
-contract BoringChef {
+contract BoringChef is ERC20 {
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -76,6 +78,8 @@ contract BoringChef {
     /// @dev Maps users to an array of booleans representing whether they have claimed rewards for a given epoch
     /// TODO let's pack this into an array of uint256s or whatever is most efficient
     mapping(address user => mapping(uint256 rewardId => bool)) public userToClaimedEpochs;
+
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) ERC20(_name, _symbol, _decimals) {}
 
     /*//////////////////////////////////////////////////////////////
                             EXTERNAL FUNCTIONS
