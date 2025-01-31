@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.21;
 
+import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 /// @title BoringChef
-contract BoringChef is ERC20 {
+contract BoringChef is Auth, ERC20 {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -97,10 +98,14 @@ contract BoringChef is ERC20 {
 
     /// @notice Initialize the contract.
     /// @dev We do this by setting the share token and initializing the first epoch.
+    /// @param _owner The owner of the BoringVault.
     /// @param _name The name of the share token.
     /// @param _symbol The symbol of the share token.
     /// @param _decimals The decimals of the share token.
-    constructor(string memory _name, string memory _symbol, uint8 _decimals) ERC20(_name, _symbol, _decimals) {}
+    constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
+        Auth(_owner, Authority(address(0)))
+        ERC20(_name, _symbol, _decimals)
+    {}
 
     /*//////////////////////////////////////////////////////////////
                        REWARD DISTRIBUTION LOGIC
@@ -113,7 +118,10 @@ contract BoringChef is ERC20 {
     /// @param amount The amount of reward tokens to distribute.
     /// @param startEpoch The start epoch.
     /// @param endEpoch The end epoch.
-    function distributeRewards(address token, uint256 amount, uint256 startEpoch, uint256 endEpoch) external {
+    function distributeRewards(address token, uint256 amount, uint256 startEpoch, uint256 endEpoch)
+        external
+        requiresAuth
+    {
         // Check that the start and end epochs are valid.
         if (startEpoch > endEpoch) {
             revert InvalidRewardCampaignDuration();
@@ -127,8 +135,7 @@ contract BoringChef is ERC20 {
         Epoch storage endEpochData = epochs[endEpoch];
 
         // Create a new reward and update the max reward ID
-        uint256 rewardId = maxRewardId;
-        rewards[rewardId] = Reward({
+        rewards[maxRewardId++] = Reward({
             token: token,
             // TODO prevent 2x epochs in one block, zeroing this
             // ^^^^ jack what did u mean by this?
@@ -137,10 +144,9 @@ contract BoringChef is ERC20 {
             endEpoch: endEpoch
         });
 
-        // Update the max reward ID
-        maxRewardId = rewardId + 1;
-
         // Transfer the reward tokens to the contract.
+        // The incentives may be in the BoringVault already if claims are made to this contract
+        // If that's true, should omit the following
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
         // Emit rewards distributed event
@@ -161,9 +167,9 @@ contract BoringChef is ERC20 {
         // For each reward ID, we'll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardIDs.length; i++) {
             // Retrieve the reward ID, start epoch, and end epoch.
-            uint256 rewardId = rewardIDs[i];
-            uint256 startEpoch = rewards[rewardId].startEpoch;
-            uint256 endEpoch = rewards[rewardId].endEpoch;
+            Reward storage reward = rewards[rewardIDs[i]];
+            uint256 startEpoch = reward.startEpoch;
+            uint256 endEpoch = reward.endEpoch;
 
             // Initialize a local accumulator for the total reward owed.
             uint256 rewardsOwed = 0;
@@ -180,20 +186,21 @@ contract BoringChef is ERC20 {
                 // TODO: OPTIMIZE THIS HELLA
                 uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
 
-                // Calculate total shares in that epoch (i.e. epochs[epoch].eligibleShares).
-                uint256 totalSharesAtEpoch = epochs[epoch].eligibleShares;
+                // If the user is owed rewards for this epoch, remit them
+                if (userBalanceAtEpoch > 0) {
+                    Epoch storage epochData = epochs[epoch];
+                    // Compute user fraction = userBalance / totalShares.
+                    uint256 userFraction = userBalanceAtEpoch.divWadDown(epochData.eligibleShares);
 
-                // Compute user fraction = userBalance / totalShares.
-                uint256 userFraction = userBalanceAtEpoch.divWadDown(totalSharesAtEpoch);
+                    // Figure out how many tokens were distributed in this epoch
+                    // for the specified reward ID:
+                    uint256 epochDuration = epochData.endTimestamp - epochData.startTimestamp;
+                    uint256 epochReward = reward.rewardRate.mulWadDown(epochDuration);
 
-                // Figure out how many tokens were distributed in this epoch
-                // for the specified reward ID:
-                uint256 epochDuration = epochs[epoch].endTimestamp - epochs[epoch].startTimestamp;
-                uint256 epochReward = rewards[rewardId].rewardRate.mulWadDown(epochDuration);
-
-                // Multiply epochReward * fraction = userRewardThisEpoch.
-                // Add that to rewardsOwed.
-                rewardsOwed += epochReward.mulWadDown(userFraction);
+                    // Multiply epochReward * fraction = userRewardThisEpoch.
+                    // Add that to rewardsOwed.
+                    rewardsOwed += epochReward.mulWadDown(userFraction);
+                }
             }
 
             // After we finish summing the user's share across all epochs in the given range,
@@ -202,7 +209,7 @@ contract BoringChef is ERC20 {
             // - Transfer tokens to the user.
 
             // Transfer the tokens to the user.
-            ERC20(rewards[rewardId].token).safeTransfer(msg.sender, rewardsOwed);
+            ERC20(reward.token).safeTransfer(msg.sender, rewardsOwed);
 
             // Mark that the user has claimed this rewardID.
             _setUserClaimedReward(msg.sender, rewardId, true);
@@ -355,7 +362,7 @@ contract BoringChef is ERC20 {
 
         // Get the current and next epoch data.
         Epoch storage currentEpochData = epochs[ongoingEpoch];
-        Epoch storage upcomingEpochData = epochs[ongoingEpoch++];
+        Epoch storage upcomingEpochData = epochs[++ongoingEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
         currentEpochData.endTimestamp = block.timestamp;
@@ -432,5 +439,57 @@ contract BoringChef is ERC20 {
         } else {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
+    }
+
+    /// @notice Find the user’s share balance at a specific epoch via binary search.
+    /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.
+    /// @param epoch The epoch for which we want the user's balance.
+    /// @param balanceChanges The historical balance updates for a user, sorted ascending by epoch.
+    /// @return The user's shares at the given epoch.
+    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
+        internal
+        pure
+        returns (uint256)
+    {
+        // Edge case: no balance changes at all
+        if (balanceChanges.length == 0) {
+            return 0;
+        }
+
+        // If the requested epoch is before the first recorded epoch,
+        // assume the user had 0 shares.
+        if (epoch < balanceChanges[0].epoch) {
+            return 0;
+        }
+
+        // If the requested epoch is beyond the last recorded epoch,
+        // return the most recent known balance.
+        uint256 lastIndex = balanceChanges.length - 1;
+        if (epoch >= balanceChanges[lastIndex].epoch) {
+            return balanceChanges[lastIndex].totalSharesBalance;
+        }
+
+        // Standard binary search:
+        // We want the highest index where balanceChanges[index].epoch <= epoch
+        uint256 low = 0;
+        uint256 high = lastIndex;
+
+        // Perform the binary search in the range [low, high]
+        while (low < high) {
+            // Midpoint (biased towards the higher index when (low+high) is even)
+            uint256 mid = (low + high + 1) >> 1; // same as (low + high + 1) / 2
+
+            if (balanceChanges[mid].epoch <= epoch) {
+                // If mid's epoch is <= target, we move `low` up to mid
+                low = mid;
+            } else {
+                // If mid's epoch is > target, we move `high` down to mid - 1
+                high = mid - 1;
+            }
+        }
+
+        // Now `low == high`, which should be the index where epoch <= balanceChanges[low].epoch
+        // and balanceChanges[low].epoch is the largest epoch not exceeding `epoch`.
+        return balanceChanges[low].totalSharesBalance;
     }
 }
