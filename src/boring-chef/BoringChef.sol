@@ -22,7 +22,6 @@ contract BoringChef is ERC20, Auth {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
-    
     event UserSharesUpdated(address indexed user, uint256 epoch, uint256 newShares);
     event EpochUpdated(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp, uint256 endTimestamp);
     event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
@@ -75,9 +74,6 @@ contract BoringChef is ERC20, Auth {
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev The share token.
-    address public immutable shareToken;
-
     /// @dev The current epoch
     uint256 public currentEpoch;
 
@@ -85,7 +81,7 @@ contract BoringChef is ERC20, Auth {
     mapping(uint256 => Epoch) public epochs;
 
     /// @dev Maps users to an array of their balance changes
-    mapping(address user => BalanceChangeUpdate[]) public userToBalanceChanges;
+    mapping(address user => BalanceUpdate[]) public userToBalanceUpdates;
 
     /// @dev Maps rewards to reward IDs
     mapping(uint256 rewardId => Reward) public rewards;
@@ -105,16 +101,10 @@ contract BoringChef is ERC20, Auth {
     /// @param _name The name of the share token.
     /// @param _symbol The symbol of the share token.
     /// @param _decimals The decimals of the share token.
-    constructor(address _shareToken, address _owner, string memory _name, string memory _symbol, uint8 _decimals)
+    constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
         ERC20(_name, _symbol, _decimals)
         Auth(_owner, Authority(address(0)))
-    {
-        shareToken = _shareToken;
-    }
-
-    // constructor(address _shareToken) {
-    //     shareToken = _shareToken;
-    // }
+    {}
 
     /*//////////////////////////////////////////////////////////////
                          DEPOSIT/WITHDRAW LOGIC
@@ -296,87 +286,92 @@ contract BoringChef is ERC20, Auth {
                             INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    function _mint(address to, uint256 amount) internal override {
+        // Mint the shares to the depositor
+        super._mint(to, amount);
+        // Mark this deposit eligible for incentives earned from the next epoch onwards
+        _increaseUpcomingEpochParticipation(to, amount);
+    }
+
+    function _burn(address from, uint256 amount) internal override {
+        // Burn the shares from the depositor
+        super._burn(from, amount);
+        // Account for withdrawal and forfeit incentives for current epoch
+        _decreaseCurrentEpochParticipation(from, amount);
+    }
+
     /// @dev Roll over to the next epoch.
+    /// @dev Should be called on every boring vault rebalance.
     function _rollOverEpoch() internal {
         // Get the current and next epoch data.
         Epoch storage currentEpochData = epochs[currentEpoch];
-        Epoch storage nextEpoch = epochs[currentEpoch + 1];
+        Epoch storage upcomingEpochData = epochs[++currentEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
         currentEpochData.endTimestamp = block.timestamp;
-        nextEpoch.startTimestamp = block.timestamp;
+        upcomingEpochData.startTimestamp = block.timestamp;
 
-        // Update the eligible shares for the next epoch if necessary.
-        // This just means setting the eligible shares to the current epoch's eligible shares.
-        if (nextEpoch.eligibleShares == 0) {
-            nextEpoch.eligibleShares = currentEpochData.eligibleShares;
+        // Update the eligible shares for the next epoch if necessary by rolling them over.
+        if (upcomingEpochData.eligibleShares == 0) {
+            upcomingEpochData.eligibleShares = currentEpochData.eligibleShares;
         }
-        
-        // Increment the current epoch.
-        currentEpoch++;
     }
 
-    /// @dev Increase the eligible shares for the next epoch.
-    /// We do this because when a user deposits, we don't recognize their deposit until the next epoch.
-    function _increaseUpcomingEpochParticipation(
-        address user,
-        uint256 amount
-    ) internal {
-        // Get the current and next epoch data.
-        Epoch storage currentEpochData = epochs[currentEpoch];
-        Epoch storage nextEpoch = epochs[currentEpoch + 1];
+    function _increaseUpcomingEpochParticipation(address user, uint256 amount) internal {
+        // Cache currentEpoch for gas savings
+        uint256 ongoingEpoch = currentEpoch;
+        uint256 upcomingEpoch = ongoingEpoch + 1;
 
-        // Update the next epoch's eligible shares.
-        // If the next epoch's eligible shares haven't been set yet, we use the current epoch's eligible shares.
-        // Otherwise, we add the amount to the next epoch's eligible shares.
-        nextEpoch.eligibleShares = nextEpoch.eligibleShares > 0 ? nextEpoch.eligibleShares + amount : currentEpochData.eligibleShares + amount;
+        // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
+        Epoch storage currentEpochData = epochs[ongoingEpoch];
+        Epoch storage upcomingEpochData = epochs[upcomingEpoch];
 
-        // Now we need to update the user's balance for the next epoch.
-        // First, we need to calculate their current balance at this epoch.
-        uint256 userBalance = userToBalanceChanges[user].length > 0 
-            ? userToBalanceChanges[user][userToBalanceChanges[user].length - 1].totalSharesBalance 
-            : 0;
+        // Deposit into the next epoch
+        // If the next epoch shares have been initialized, increment them by the shares minted on entry
+        // else rollover current shares plus the shares minted on entry
+        upcomingEpochData.eligibleShares = upcomingEpochData.eligibleShares > 0
+            ? upcomingEpochData.eligibleShares + amount
+            : currentEpochData.eligibleShares + amount;
 
-        // Next, we need to calculate their new balance at this epoch.
-        uint256 newBalance = userBalance + amount;
+        // Get the post-deposit share balance of the user
+        uint256 resultingShareBalance = balanceOf[user];
 
-        // Now we update the user's balance change for the next epoch.
-        userToBalanceChanges[user].push(BalanceChangeUpdate({
-            epoch: currentEpoch + 1,
-            totalSharesBalance: newBalance
-        }));
+        // Account for the deposit for the user
+        _updateUserShareAccounting(user, upcomingEpoch, resultingShareBalance);
+
+        // Emit event for this deposit
+        emit UserDepositedIntoEpoch(user, upcomingEpoch, amount);
     }
 
-    /// @dev Decrease the eligible shares for the current epoch.
-    /// We do this because when a user withdraws, we cut their shares from the current epoch's eligible shares.
-    function _decreaseCurrentEpochParticipation(
-        address user,
-        uint256 amount
-    ) internal {
-        // Get the current epoch data.
-        Epoch storage currentEpochData = epochs[currentEpoch];
+    function _decreaseCurrentEpochParticipation(address user, uint256 amount) internal {
+        // Cache currentEpoch for gas savings
+        uint256 ongoingEpoch = currentEpoch;
 
-        // Decrease the current epoch's eligible shares.
+        // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
+        Epoch storage currentEpochData = epochs[ongoingEpoch];
+
+        // Account for withdrawal from the current epoch
         currentEpochData.eligibleShares -= amount;
 
-        // Now we need to update the user's balance for the current epoch.
-        // First, we need to calculate their current balance at this epoch.
-        uint256 userBalance = userToBalanceChanges[user].length > 0 
-            ? userToBalanceChanges[user][userToBalanceChanges[user].length - 1].totalSharesBalance 
-            : 0;
+        // Get the post-withdraw share balance of the user
+        uint256 resultingShareBalance = balanceOf[user];
 
-        // Raise an error if the user's balance is less than the amount they are withdrawing.
-        if (userBalance < amount) {
-            revert UserDoesNotHaveEnoughSharesToWithdraw();
+        // Account for the withdrawal for the user
+        _updateUserShareAccounting(user, ongoingEpoch, resultingShareBalance);
+
+        // Emit event for this withdrawal
+        emit UserWithdrawnFromEpoch(user, ongoingEpoch, amount);
+    }
+
+    function _updateUserShareAccounting(address user, uint256 epoch, uint256 updatedBalance) internal {
+        // Get the balance update data for the user
+        BalanceUpdate[] storage balanceUpdates = userToBalanceUpdates[user];
+        BalanceUpdate storage lastBalanceUpdate = balanceUpdates[balanceUpdates.length - 1];
+        // Ensure no duplicate entries
+        if (lastBalanceUpdate.epoch == epoch) {
+            lastBalanceUpdate.totalSharesBalance = updatedBalance;
+        } else {
+            balanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
-
-        // Next, we need to calculate their new balance at this epoch.
-        uint256 newBalance = userBalance - amount;
-
-        // Now we update the user's balance change for the current epoch.
-        userToBalanceChanges[user].push(BalanceChangeUpdate({
-            epoch: currentEpoch,
-            totalSharesBalance: newBalance
-        }));
     }
 }

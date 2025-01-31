@@ -28,6 +28,12 @@ contract BoringVault is BoringChef, ERC721Holder, ERC1155Holder {
     event Enter(address indexed from, address indexed asset, uint256 amount, address indexed to, uint256 shares);
     event Exit(address indexed to, address indexed asset, uint256 amount, address indexed from, uint256 shares);
 
+    //============================== CONSTRUCTOR ===============================
+
+    constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
+        BoringChef(_name, _symbol, _decimals)
+    {}
+
     //============================== MANAGE ===============================
 
     /**
@@ -39,6 +45,10 @@ contract BoringVault is BoringChef, ERC721Holder, ERC1155Holder {
         requiresAuth
         returns (bytes memory result)
     {
+        // Start a new epoch on every rebalance
+        _rollOverEpoch();
+
+        // Continue with rebalance
         result = target.functionCallWithValue(data, value);
     }
 
@@ -51,6 +61,10 @@ contract BoringVault is BoringChef, ERC721Holder, ERC1155Holder {
         requiresAuth
         returns (bytes[] memory results)
     {
+        // Start a new epoch on every rebalance
+        _rollOverEpoch();
+
+        // Continue with rebalance
         uint256 targetsLength = targets.length;
         results = new bytes[](targetsLength);
         for (uint256 i; i < targetsLength; ++i) {
@@ -115,12 +129,12 @@ contract BoringVault is BoringChef, ERC721Holder, ERC1155Holder {
         if (address(hook) != address(0)) hook.beforeTransfer(from, to, msg.sender);
     }
 
-    function transfer(address to, uint256 amount) public override returns (bool) {
+    function transfer(address to, uint256 amount) public override(BoringChef) returns (bool) {
         _callBeforeTransfer(msg.sender, to);
         return super.transfer(to, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public override(BoringChef) returns (bool) {
         _callBeforeTransfer(from, to);
         return super.transferFrom(from, to, amount);
     }
