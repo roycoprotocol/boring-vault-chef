@@ -11,7 +11,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 contract BoringChef is ERC20, Auth {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
-    
+
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -254,14 +254,21 @@ contract BoringChef is ERC20, Auth {
                                 TRANSFER LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Transfer shares
+    /// @dev This function is overridden from the ERC20 implementation to account for incentives.
     function transfer(address to, uint256 amount) public virtual override(ERC20) returns (bool success) {
         // Transfer shares from msg.sender to "to"
         success = super.transfer(to, amount);
 
         // Account for withdrawal and forfeit incentives for current epoch for msg.sender
         _decreaseCurrentEpochParticipation(msg.sender, amount);
+
+        // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
+        _increaseUpcomingEpochParticipation(to, amount);
     }
 
+    /// @notice Transfer shares from one user to another
+    /// @dev This function is overridden from the ERC20 implementation to account for incentives.
     function transferFrom(address from, address to, uint256 amount)
         public
         virtual
@@ -282,16 +289,22 @@ contract BoringChef is ERC20, Auth {
                             INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Mint shares
+    /// @dev This function is overridden from the ERC20 implementation to account for incentives.
     function _mint(address to, uint256 amount) internal override {
         // Mint the shares to the depositor
         super._mint(to, amount);
+
         // Mark this deposit eligible for incentives earned from the next epoch onwards
         _increaseUpcomingEpochParticipation(to, amount);
     }
 
+    /// @notice Burn shares
+    /// @dev This function is overridden from the ERC20 implementation to account for incentives.
     function _burn(address from, uint256 amount) internal override {
         // Burn the shares from the depositor
         super._burn(from, amount);
+
         // Account for withdrawal and forfeit incentives for current epoch
         _decreaseCurrentEpochParticipation(from, amount);
     }
@@ -313,6 +326,7 @@ contract BoringChef is ERC20, Auth {
         }
     }
 
+    /// @notice Increase the user's share balance for the next epoch
     function _increaseUpcomingEpochParticipation(address user, uint256 amount) internal {
         // Cache currentEpoch for gas savings
         uint256 ongoingEpoch = currentEpoch;
@@ -339,6 +353,7 @@ contract BoringChef is ERC20, Auth {
         emit UserDepositedIntoEpoch(user, upcomingEpoch, amount);
     }
 
+    /// @notice Decrease the user's share balance for the current epoch
     function _decreaseCurrentEpochParticipation(address user, uint256 amount) internal {
         // Cache currentEpoch for gas savings
         uint256 ongoingEpoch = currentEpoch;
@@ -359,13 +374,17 @@ contract BoringChef is ERC20, Auth {
         emit UserWithdrawnFromEpoch(user, ongoingEpoch, amount);
     }
 
+    /// @notice Update the user's share balance for a given epoch
     function _updateUserShareAccounting(address user, uint256 epoch, uint256 updatedBalance) internal {
         // Get the balance update data for the user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
         BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
+
         // Ensure no duplicate entries
         if (lastBalanceUpdate.epoch == epoch) {
             lastBalanceUpdate.totalSharesBalance = updatedBalance;
+
+        // If the last balance update is not for the current epoch, add a new balance update
         } else {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
