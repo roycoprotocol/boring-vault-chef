@@ -28,13 +28,6 @@ contract BoringVault is BoringChef, ERC721Holder, ERC1155Holder {
     event Enter(address indexed from, address indexed asset, uint256 amount, address indexed to, uint256 shares);
     event Exit(address indexed to, address indexed asset, uint256 amount, address indexed from, uint256 shares);
 
-    //============================== CONSTRUCTOR ===============================
-
-    constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
-        BoringChef(_name, _symbol, _decimals)
-        Auth(_owner, Authority(address(0)))
-    {}
-
     //============================== MANAGE ===============================
 
     /**

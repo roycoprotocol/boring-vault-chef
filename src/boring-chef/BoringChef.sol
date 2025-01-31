@@ -2,13 +2,15 @@
 pragma solidity 0.8.21;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
-import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {Auth, Authority} from "solmate/auth/Auth.sol";
+
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 /// @title BoringChef
 contract BoringChef is ERC20, Auth {
     using SafeTransferLib for ERC20;
-
+    using FixedPointMathLib for uint256;
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -176,7 +178,7 @@ contract BoringChef is ERC20, Auth {
             token: token,
             // TODO prevent 2x epochs in one block, zeroing this
             // ^^^^ jack what did u mean by this?
-            rewardTokenDistributionRate: amount / (endEpochData.endTimestamp - startEpochData.startTimestamp),
+            rewardTokenDistributionRate: amount.divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
             startEpoch: startEpoch,
             endEpoch: endEpoch
         });
@@ -186,10 +188,6 @@ contract BoringChef is ERC20, Auth {
 
         // Transfer the reward tokens to the contract.
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-
-        // TODO: do we need to update the current epoch here?
-        // epochs[currentEpoch].endTimestamp = block.timestamp;
-        // epochs[currentEpoch++].startTimestamp = block.timestamp;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -199,60 +197,100 @@ contract BoringChef is ERC20, Auth {
     /// @notice Claim rewards for a given array of tokens and epoch ranges.
     /// @dev We do this by calculating the rewards owed to the user for each token and epoch range.
     /// @param rewardIDs The IDs of the rewards to claim.
-    /// @param rewardIDEpochRanges The epoch ranges for the rewards to claim.
     function claimRewards(
-        uint256[] calldata rewardIDs,
-        uint256[2][] calldata rewardIDEpochRanges
+        uint256[] calldata rewardIDs
     ) external {
-        // Store the user's balance changes.
-        BalanceChangeUpdate[] memory balanceChangeUpdates = userToBalanceChanges[msg.sender]; 
+        // Fetch all balance change updates for the caller.
+        BalanceChangeUpdate[] memory balanceChangeUpdates = userToBalanceChanges[msg.sender];
 
-        // Initialize the rewards owed and the current update index.
-        uint256 rewardsOwed = 0;
-
-        // Iterate over the supplied reward IDs.
+        // For each reward ID, we’ll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardIDs.length; i++) {
-            // Initialize the relevant balance changes array.
-            uint256[] memory relevantBalanceChanges = new uint256[](balanceChangeUpdates.length);
+            // Retrieve the reward ID, start epoch, and end epoch.
+            uint256 rewardId = rewardIDs[i];
+            uint256 startEpoch = rewards[rewardId].startEpoch;
+            uint256 endEpoch   = rewards[rewardId].endEpoch;
 
-            // Iterate over the balanceChangeUpdates array to find relevant epochs.
-            uint256 relevantIndex = 0;
-            for (uint256 k = 0; k < balanceChangeUpdates.length; k++) {
-                uint256 epoch = balanceChangeUpdates[k].epoch;
-                
-                // Check if the epoch is directly before the epoch range or within the range.
-                if (epoch >= rewardIDEpochRanges[i][0] && epoch <= rewardIDEpochRanges[i][1]) {
-                    relevantBalanceChanges[relevantIndex] = k;
-                    relevantIndex++;
-                }
-            }
-            // Resize the relevantBalanceChanges array to the actual number of relevant epochs found.
-            assembly { mstore(relevantBalanceChanges, relevantIndex) }
+            // Initialize a local accumulator for the total reward owed.
+            uint256 rewardsOwed = 0;
 
-            for (uint256 j = 0; j < rewardIDEpochRanges[i].length; j++) {
+            // We want to iterate over the epoch range [startEpoch..endEpoch],
+            // summing up the user’s share of tokens from each epoch.
+            for (uint256 epoch = startEpoch; epoch <= endEpoch; epoch++) {
+                // Determine the user’s share balance during this epoch.
+                // TODO: OPTIMIZE THIS HELLA 
+                uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(
+                    msg.sender,
+                    epoch,
+                    balanceChangeUpdates
+                );
+
+                // Calculate total shares in that epoch (i.e. epochs[epoch].eligibleShares).
+                uint256 totalSharesAtEpoch = epochs[epoch].eligibleShares;
+
+                // Compute user fraction = userBalance / totalShares.
+                uint256 userFraction = userBalanceAtEpoch.divWadDown(totalSharesAtEpoch);
+
+                // Figure out how many tokens were distributed in this epoch
+                // for the specified reward ID:
+                uint256 epochDuration = epochs[epoch].endTimestamp - epochs[epoch].startTimestamp;
+                uint256 epochReward = rewards[rewardId].rewardTokenDistributionRate.mulWadDown(epochDuration);
                 
+                // Multiply epochReward * fraction = userRewardThisEpoch.
+                // Add that to rewardsOwed.
+                rewardsOwed += epochReward.mulWadDown(userFraction);
             }
+
+        // After we finish summing the user’s share across all epochs in the given range,
+        // we have the total reward for that rewardId. Now we can do two things:
+        // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
+        // - Transfer tokens to the user.
+
+        // Transfer the tokens to the user.
+        ERC20(rewards[rewardId].token).safeTransfer(msg.sender, rewardsOwed);
+
+        // Mark that the user has claimed this rewardID.
+        userToClaimedEpochs[msg.sender][rewardId] = true;
+
+        // Emit an event for clarity
+            emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
         }
-
-        // initialize currentUpdateIndex
-        // for(i in rewardIds) {
-        //         // calculate the balance at this specific epoch using binary search
-        //         // be careful about epoch updates during the epoch range specified
-        //     for(y in rewardIDEpochs) {
-        //         // calculate the amount of reward points owed to the user for this specific epoch 
-        //         // we can do this by dividing (user shares * wad) by total shares 
-        //         // multiply reward token amount per epoch by this fraction
-        //         // memorize the values potentially ??? 
-        //         // increase our current indexpointer -- this is a value reprensenting
-        //         // our current epoch because we need to essentially check whether the balance changed 
-        //         // from this
-        //     }
-        // }
     }
 
     /*//////////////////////////////////////////////////////////////
                     INTERNAL REWARD CLAIMING LOGIC
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Find the user’s share balance at a specific epoch.
+    /// @dev This can be done via binary search over balanceChangeUpdates if the list is large.
+    ///      For simplicity, you can also do a linear scan if the array is short.
+    function _findUserBalanceAtEpoch(
+        address user,
+        uint256 epoch,
+        BalanceChangeUpdate[] memory balanceChanges
+    )
+        internal
+        view
+        returns (uint256)
+    {
+        // Just iterate backwards until we find the epoch.
+        uint256 i = balanceChanges.length - 1;
+        while (balanceChanges[i].epoch > epoch) {
+            i--;
+        }
+
+        // Return the user's balance at the most recent epoch before the target epoch.
+        return balanceChanges[currentEpoch].totalSharesBalance;
+    }
+
+    /// @notice Optionally break out logic for how many tokens are minted to the entire vault in a given epoch
+    function _epochRewardAmount(uint256 rewardId, uint256 epoch) internal view returns (uint256) {
+        // 1. Access rewards[rewardId].rewardTokenDistributionRate
+        // 2. Multiply by the number of seconds in that epoch
+        //    e.g. epochs[epoch].endTimestamp - epochs[epoch].startTimestamp
+        // 3. Return the total minted to that epoch for that reward
+        // (That’s your “epochReward” in the example calculation.)
+        return 0;
+    }
 
     /*//////////////////////////////////////////////////////////////
                             INTERNAL FUNCTIONS
@@ -342,99 +380,3 @@ contract BoringChef is ERC20, Auth {
         }));
     }
 }
-
-
-// /// @title BoringChef
-// contract PussyDistrubitor {
-
-//     /*//////////////////////////////////////////////////////////////
-//                                 STORAGE
-//     //////////////////////////////////////////////////////////////*/
-
-//     struct Epoch {
-//         uint256 eligibleShares;
-//         uint256 startTimestamp;
-//         uint256 endTimestamp;
-//     }
-
-//     mapping(uint256 epoch => Epoch) public epochs; //TODO: see if array is better
-//     uint256 public currentEpoch;
-
-//     struct BalanceChangeUpdate {
-//         uint256 epoch;
-//         uint256 totalDeposits;
-//     }
-//     mapping(address user => BalanceChangeUpdate[]) public userToDepositUpdates; // TODO: Consider outsourcing the binary search part of this to frontend. Could pass an array index in with the function params and ensure the previous entry is before and the next entry is after
-
-//     struct Reward {
-//         address token;
-//         uint256 rewardRate;
-//         uint256 startEpoch;
-//         uint256 endEpoch;
-//     }
-
-//     //TODO call on deposit and anytime a user gains tokens
-//     function _increaseUpcomingEpochParticipation(uint256 amount, address user) internal { //TODO: rename to amount of shares or sumn
-//         Epoch storage currentEpoch = epochs[currentEpoch];
-//         Epoch storage targetEpoch = epochs[currentEpoch + 1];
-
-//         targetEpoch.eligibleShares = targetEpoch.eligibleShares ? targetEpoch.eligibleShares + amount : currentEpoch.eligibleShares + amount;
-
-//         // the user's new balance (add amount to existing user shares)
-//         uint newNumShares = 12345;
-//         // TODO: make sure that balanceChangeUpdates are unique on epochID;
-//         userToDepositUpdates[user].push(BalanceChangeUpdate(currentEpoch + 1), newNumShares);
-//     }
-
-//     //TODO call on withdraw and anytime a user loses tokens
-//     function _decreaseCurrentEpochParticipation(uint256 amount, address user) internal {
-//         Epoch storage currentEpoch = epochs[currentEpoch];
-
-//         currentEpoch.eligibleShares -= amount;
-
-//         uint newNumShares = 12345; // TODO: connect this to token logic
-//         // TODO: make sure that balanceChangeUpdates are unique on epochID;
-//         userToDepositUpdates[user].push(BalanceChangeUpdate(currentEpoch), newNumShares);
-//     }
-
-//     // TODO: either require call this on rebalance, or split into a rebalance call and a rewards call
-//     function distributeRewards(uint256 amount, address token, uint256 startEpoch, uint256 endEpoch) public {
-//         require (endEpoch <= currentEpoch, "No rewards on future epochs");
-
-//         Epoch storage startEpoch = epochs[startEpoch];
-//         Epoch storage endEpoch = epochs[endEpoch];
-
-//         Reward.rewardRate = amount / (endEpoch.endTimestamp - startEpoch.startTimestamp); //TODO prevent 2x epochs in one block, zeroing this
-
-//         epochs[currentEpoch].endTimestamp = block.timestamp;
-//         epochs[currentEpoch++].startTimestamp = block.timestamp;
-
-//         //TODO: ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-//     }
-
-//     function claim(uint256[] rewardIDs, uint256[2][] rewardIDEpochs) public { //TODO: batch claim
-//         BalanceChangeUpdate[] storage balanceChangeUpdates = userToDepositUpdates[msg.sender];
-
-//         uint256 memory rewardsOwed = 0;
-//         uint256 memory currentUpdateIndex = 0;
-//         uint256 memory epoch = rewardID.startEpoch;
-
-//         BalanceChangeUpdate storage currentUpdate = balanceChangeUpdates[currentUpdateIndex];
-
-//         // initialize currentUpdateIndex
-//         // for(i in rewardIds) {
-//         //         // calculate the balance at this specific epoch using binary search
-//         //         // be careful about epoch updates during the epoch range specified
-//         //     for(y in rewardIDEpochs) {
-//         //         // calculate the amount of reward points owed to the user for this specific epoch
-//         //         // we can do this by dividing (user shares * wad) by total shares
-//         //         // multiply reward token amount per epoch by this fraction
-//         //         // memorize the values potentially ???
-//         //         // increase our current indexpointer -- this is a value reprensenting
-//         //         // our current epoch because we need to essentially check whether the balance changed
-//         //         // from this
-//         //     }
-//         // }
-//     }
-
-// }
