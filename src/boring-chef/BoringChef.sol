@@ -285,7 +285,7 @@ contract BoringChef is Auth, ERC20 {
 
         // Get the current and next epoch data.
         Epoch storage currentEpochData = epochs[ongoingEpoch];
-        Epoch storage upcomingEpochData = epochs[ongoingEpoch++];
+        Epoch storage upcomingEpochData = epochs[++ongoingEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
         currentEpochData.endTimestamp = block.timestamp;
