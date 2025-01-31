@@ -87,9 +87,9 @@ contract BoringChef is ERC20 {
     mapping(uint256 rewardId => Reward) public rewards;
     uint256 public maxRewardId;
 
-    /// @dev Maps users to an array of booleans representing whether they have claimed rewards for a given epoch
-    /// TODO let's pack this into an array of uint256s or whatever is most efficient
-    mapping(address user => mapping(uint256 rewardId => bool)) public userToClaimedEpochs;
+    /// @dev Maps users to an array of booleans representing whether they have claimed rewards for each epochID.
+    /// @dev Each bit in userToClaimedEpochs[user][rewardIds] corresponds to one reward ID.
+    mapping(address user => mapping(uint256 rewardIds => uint256 claimedEpochBitMask)) public userToClaimedEpochs;
 
     /*//////////////////////////////////////////////////////////////
                                 CONSTRUCTOR
@@ -369,5 +369,54 @@ contract BoringChef is ERC20 {
         } else {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
+    }
+
+/// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
+/// @dev `isClaimed = true` sets the bit; `isClaimed = false` clears the bit.
+function _setUserClaimedEpochs(
+    address user,
+    uint256 rewardId,
+    bool isClaimed
+)
+    internal
+{
+    // Determine which 256-bit word (the “block”) we need
+    uint256 wordIndex = rewardId / 256;
+
+    // The bit offset inside that 256-bit word
+    uint256 bitOffset = rewardId % 256;
+
+    // Read the current word (256 bits) from storage
+    uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+
+    if (isClaimed) {
+        // Set the bit
+        currentWord |= (1 << bitOffset);
+    } else {
+        // Clear the bit
+        currentWord &= ~(1 << bitOffset);
+    }
+
+    // Write back the updated word
+    userToClaimedEpochs[user][wordIndex] = currentWord;
+}
+
+    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
+    function _getUserClaimedEpochs(address user, uint256 rewardId)
+        internal
+        view
+        returns (bool claimed)
+    {
+        // Determine the word/block index
+        uint256 wordIndex = rewardId / 256;
+        // The bit offset within that block
+        uint256 bitOffset = rewardId % 256;
+
+        // Read the 256-bit word
+        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+
+        // Shift right so that the target bit is in the least significant position,
+        // then check if it’s 1
+        claimed = ((currentWord >> bitOffset) & 1) == 1;
     }
 }
