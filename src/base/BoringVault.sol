@@ -46,6 +46,10 @@ contract BoringVault is BoringChef, Auth, ERC721Holder, ERC1155Holder {
         requiresAuth
         returns (bytes memory result)
     {
+        // Start a new epoch on every rebalance
+        _rollOverEpoch();
+
+        // Continue with rebalance
         result = target.functionCallWithValue(data, value);
     }
 
@@ -58,6 +62,10 @@ contract BoringVault is BoringChef, Auth, ERC721Holder, ERC1155Holder {
         requiresAuth
         returns (bytes[] memory results)
     {
+        // Start a new epoch on every rebalance
+        _rollOverEpoch();
+
+        // Continue with rebalance
         uint256 targetsLength = targets.length;
         results = new bytes[](targetsLength);
         for (uint256 i; i < targetsLength; ++i) {

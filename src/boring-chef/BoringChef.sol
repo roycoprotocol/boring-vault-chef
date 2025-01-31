@@ -168,6 +168,23 @@ contract BoringChef is ERC20 {
         _decreaseCurrentEpochParticipation(from, amount);
     }
 
+    /// @dev Roll over to the next epoch.
+    /// @dev Should be called on every boring vault rebalance.
+    function _rollOverEpoch() internal {
+        // Get the current and next epoch data.
+        Epoch storage currentEpochData = epochs[currentEpoch];
+        Epoch storage upcomingEpochData = epochs[++currentEpoch];
+
+        // Update the current epoch's end timestamp and the next epoch's start timestamp.
+        currentEpochData.endTimestamp = block.timestamp;
+        upcomingEpochData.startTimestamp = block.timestamp;
+
+        // Update the eligible shares for the next epoch if necessary by rolling them over.
+        if (upcomingEpochData.eligibleShares == 0) {
+            upcomingEpochData.eligibleShares = currentEpochData.eligibleShares;
+        }
+    }
+
     function _increaseUpcomingEpochParticipation(address user, uint256 amount) internal {
         // Cache currentEpoch for gas savings
         uint256 ongoingEpoch = currentEpoch;
