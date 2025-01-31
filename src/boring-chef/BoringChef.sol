@@ -2,13 +2,19 @@
 pragma solidity 0.8.21;
 
 import {ERC20} from "@solmate/tokens/ERC20.sol";
+import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
+import {FixedPointMathLib} from "@solmate/utils/FixedPointMathLib.sol";
 
 /// @title BoringChef
 contract BoringChef is ERC20 {
+    using SafeTransferLib for ERC20;
+    using FixedPointMathLib for uint256;
+
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
+    error InvalidRewardCampaignDuration();
     error NoFutureEpochRewards();
 
     /*//////////////////////////////////////////////////////////////
@@ -20,6 +26,9 @@ contract BoringChef is ERC20 {
     event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
     event UserRewardsClaimed(address indexed user, uint256 startEpoch, uint256 endEpoch, uint256 amount);
 
+    event RewardsDistributed(
+        address indexed token, uint256 indexed startEpoch, uint256 indexed endEpoch, uint256 amount
+    );
     event UserDepositedIntoEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
     event UserWithdrawnFromEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
 
@@ -89,19 +98,36 @@ contract BoringChef is ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     function distributeRewards(uint256 amount, address token, uint256 startEpoch, uint256 endEpoch) external {
-        // This
-        require(endEpoch <= currentEpoch, "No rewards on future epochs");
-        // require (endEpoch <= currentEpoch, "No rewards on future epochs");
+        // Cache currentEpoch for gas savings
+        uint256 ongoingEpoch = currentEpoch;
 
-        // Epoch storage startEpoch = epochs[startEpoch];
-        // Epoch storage endEpoch = epochs[endEpoch];
+        if (startEpoch > endEpoch) {
+            revert InvalidRewardCampaignDuration();
+        }
+        if (endEpoch >= ongoingEpoch) {
+            revert NoFutureEpochRewards();
+        }
 
-        // Reward.rewardRate = amount / (endEpoch.endTimestamp - startEpoch.startTimestamp); //TODO prevent 2x epochs in one block, zeroing this
+        // Get the start and end epoch data.
+        Epoch storage startEpochData = epochs[startEpoch];
+        Epoch storage endEpochData = epochs[endEpoch];
 
-        // epochs[currentEpoch].endTimestamp = block.timestamp;
-        // epochs[currentEpoch++].startTimestamp = block.timestamp;
+        // Create a new reward and update the max reward ID
+        uint256 rewardId = maxRewardId++;
+        rewards[rewardId] = Reward({
+            token: token,
+            // TODO prevent 2x epochs in one block, zeroing this
+            // ^^^^ jack what did u mean by this? Divide by 0.
+            rewardRate: amount.divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp), // Scale up by 1e18 to avoid precision loss
+            startEpoch: startEpoch,
+            endEpoch: endEpoch
+        });
 
-        // //TODO: ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        // Transfer the reward tokens to the contract.
+        ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        // Emit rewards distributed event
+        emit RewardsDistributed(token, startEpoch, endEpoch, amount);
     }
 
     // function claim(
@@ -132,18 +158,23 @@ contract BoringChef is ERC20 {
     //     // }
     // }
 
-    function transfer(address to, uint256 amount) public virtual override(ERC20) returns (bool) {
+    function transfer(address to, uint256 amount) public virtual override(ERC20) returns (bool success) {
         // Transfer shares from msg.sender to "to"
-        super.transfer(to, amount);
+        success = super.transfer(to, amount);
         // Account for withdrawal and forfeit incentives for current epoch for msg.sender
         _decreaseCurrentEpochParticipation(msg.sender, amount);
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
         _increaseUpcomingEpochParticipation(to, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public virtual override(ERC20) returns (bool) {
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        virtual
+        override(ERC20)
+        returns (bool success)
+    {
         // Transfer shares from "from" to "to"
-        super.transferFrom(from, to, amount);
+        success = super.transferFrom(from, to, amount);
         // Account for withdrawal and forfeit incentives for current epoch for "from"
         _decreaseCurrentEpochParticipation(from, amount);
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
