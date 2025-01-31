@@ -18,6 +18,7 @@ contract BoringChef is ERC20, Auth {
     error NoFutureEpochRewards();
     error StartEpochMustBeBeforeEndEpoch();
     error UserDoesNotHaveEnoughSharesToWithdraw();
+    error InvalidRewardCampaignDuration();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -38,7 +39,7 @@ contract BoringChef is ERC20, Auth {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev A record of a user's balance changing at a specific epoch
-    struct BalanceChangeUpdate {
+    struct BalanceUpdate {
         /// @dev The epoch in which the deposit was made
         uint256 epoch;
 
@@ -67,7 +68,7 @@ contract BoringChef is ERC20, Auth {
         address token;
 
         /// @dev The rate at which the reward token is distributed per second
-        uint256 rewardTokenDistributionRate;
+        uint256 rewardRate;
 
         /// @dev The epoch at which the reward starts
         uint256 startEpoch;
@@ -87,7 +88,7 @@ contract BoringChef is ERC20, Auth {
     mapping(uint256 => Epoch) public epochs;
 
     /// @dev Maps users to an array of their balance changes
-    mapping(address user => BalanceUpdate[]) public userToBalanceUpdates;
+    mapping(address user => BalanceUpdate[]) public balanceUpdates;
 
     /// @dev Maps rewards to reward IDs
     mapping(uint256 rewardId => Reward) public rewards;
@@ -150,9 +151,6 @@ contract BoringChef is ERC20, Auth {
         success = super.transfer(to, amount);
         // Account for withdrawal and forfeit incentives for current epoch for msg.sender
         _decreaseCurrentEpochParticipation(msg.sender, amount);
-
-        // Transfer the tokens to the user.
-        ERC20(shareToken).safeTransfer(msg.sender, amount);
     }
 
     function transferFrom(address from, address to, uint256 amount)
@@ -168,7 +166,7 @@ contract BoringChef is ERC20, Auth {
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
         _increaseUpcomingEpochParticipation(to, amount);
     }
-    
+
     /*//////////////////////////////////////////////////////////////
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -204,7 +202,7 @@ contract BoringChef is ERC20, Auth {
             token: token,
             // TODO prevent 2x epochs in one block, zeroing this
             // ^^^^ jack what did u mean by this?
-            rewardTokenDistributionRate: amount.divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
+            rewardRate: amount.divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
             startEpoch: startEpoch,
             endEpoch: endEpoch
         });
@@ -227,7 +225,7 @@ contract BoringChef is ERC20, Auth {
         uint256[] calldata rewardIDs
     ) external {
         // Fetch all balance change updates for the caller.
-        BalanceChangeUpdate[] memory balanceChangeUpdates = userToBalanceChanges[msg.sender];
+        BalanceUpdate[] memory balanceUpdates = balanceUpdates[msg.sender];
 
         // For each reward ID, we’ll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardIDs.length; i++) {
@@ -247,7 +245,7 @@ contract BoringChef is ERC20, Auth {
                 uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(
                     msg.sender,
                     epoch,
-                    balanceChangeUpdates
+                    balanceUpdates
                 );
 
                 // Calculate total shares in that epoch (i.e. epochs[epoch].eligibleShares).
@@ -259,7 +257,7 @@ contract BoringChef is ERC20, Auth {
                 // Figure out how many tokens were distributed in this epoch
                 // for the specified reward ID:
                 uint256 epochDuration = epochs[epoch].endTimestamp - epochs[epoch].startTimestamp;
-                uint256 epochReward = rewards[rewardId].rewardTokenDistributionRate.mulWadDown(epochDuration);
+                uint256 epochReward = rewards[rewardId].rewardRate.mulWadDown(epochDuration);
                 
                 // Multiply epochReward * fraction = userRewardThisEpoch.
                 // Add that to rewardsOwed.
@@ -287,12 +285,12 @@ contract BoringChef is ERC20, Auth {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Find the user’s share balance at a specific epoch.
-    /// @dev This can be done via binary search over balanceChangeUpdates if the list is large.
+    /// @dev This can be done via binary search over balanceUpdates if the list is large.
     ///      For simplicity, you can also do a linear scan if the array is short.
     function _findUserBalanceAtEpoch(
         address user,
         uint256 epoch,
-        BalanceChangeUpdate[] memory balanceChanges
+        BalanceUpdate[] memory balanceChanges
     )
         internal
         view
@@ -310,7 +308,7 @@ contract BoringChef is ERC20, Auth {
 
     /// @notice Optionally break out logic for how many tokens are minted to the entire vault in a given epoch
     function _epochRewardAmount(uint256 rewardId, uint256 epoch) internal view returns (uint256) {
-        // 1. Access rewards[rewardId].rewardTokenDistributionRate
+        // 1. Access rewards[rewardId].rewardRate
         // 2. Multiply by the number of seconds in that epoch
         //    e.g. epochs[epoch].endTimestamp - epochs[epoch].startTimestamp
         // 3. Return the total minted to that epoch for that reward
@@ -401,7 +399,7 @@ contract BoringChef is ERC20, Auth {
 
     function _updateUserShareAccounting(address user, uint256 epoch, uint256 updatedBalance) internal {
         // Get the balance update data for the user
-        BalanceUpdate[] storage balanceUpdates = userToBalanceUpdates[user];
+        BalanceUpdate[] storage balanceUpdates = balanceUpdates[user];
         BalanceUpdate storage lastBalanceUpdate = balanceUpdates[balanceUpdates.length - 1];
         // Ensure no duplicate entries
         if (lastBalanceUpdate.epoch == epoch) {
