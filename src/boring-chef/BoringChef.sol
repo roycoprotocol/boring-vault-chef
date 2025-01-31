@@ -158,7 +158,7 @@ contract BoringChef is ERC20 {
         // Fetch all balance change updates for the caller.
         BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[msg.sender];
 
-        // For each reward ID, we’ll calculate how many tokens are owed.
+        // For each reward ID, we'll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardIDs.length; i++) {
             // Retrieve the reward ID, start epoch, and end epoch.
             uint256 rewardId = rewardIDs[i];
@@ -168,10 +168,15 @@ contract BoringChef is ERC20 {
             // Initialize a local accumulator for the total reward owed.
             uint256 rewardsOwed = 0;
 
+            // If the user has already claimed this reward, skip.
+            if (_getUserClaimedReward(msg.sender, rewardId)) {
+                continue;
+            }
+
             // We want to iterate over the epoch range [startEpoch..endEpoch],
-            // summing up the user’s share of tokens from each epoch.
+            // summing up the user's share of tokens from each epoch.
             for (uint256 epoch = startEpoch; epoch <= endEpoch; epoch++) {
-                // Determine the user’s share balance during this epoch.
+                // Determine the user's share balance during this epoch.
                 // TODO: OPTIMIZE THIS HELLA
                 uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
 
@@ -191,7 +196,7 @@ contract BoringChef is ERC20 {
                 rewardsOwed += epochReward.mulWadDown(userFraction);
             }
 
-            // After we finish summing the user’s share across all epochs in the given range,
+            // After we finish summing the user's share across all epochs in the given range,
             // we have the total reward for that rewardId. Now we can do two things:
             // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
             // - Transfer tokens to the user.
@@ -200,14 +205,14 @@ contract BoringChef is ERC20 {
             ERC20(rewards[rewardId].token).safeTransfer(msg.sender, rewardsOwed);
 
             // Mark that the user has claimed this rewardID.
-            userToClaimedEpochs[msg.sender][rewardId] = true;
+            _setUserClaimedReward(msg.sender, rewardId, true);
 
             // Emit an event for clarity
             emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
         }
     }
 
-    /// @notice Find the user’s share balance at a specific epoch.
+    /// @notice Find the user's share balance at a specific epoch.
     /// @dev This can be done via binary search over balanceUpdates if the list is large.
     ///      For simplicity, you can also do a linear scan if the array is short.
     function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
@@ -258,6 +263,64 @@ contract BoringChef is ERC20 {
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
         _increaseUpcomingEpochParticipation(to, amount);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          CLAIM BITMASK LOGIC
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
+    function epochClaimed(address user, uint256 rewardId) public view returns (bool claimed) {
+        return _getUserClaimedReward(user, rewardId);
+    }
+
+    /// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
+    /// @dev `isClaimed = true` sets the bit; `isClaimed = false` clears the bit.
+    function _setUserClaimedReward(
+        address user,
+        uint256 rewardId,
+        bool isClaimed
+    )
+        internal
+    {
+        // Determine which 256-bit word (the “block”) we need
+        uint256 wordIndex = rewardId / 256;
+
+        // The bit offset inside that 256-bit word
+        uint256 bitOffset = rewardId % 256;
+
+        // Read the current word (256 bits) from storage
+        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+
+        if (isClaimed) {
+            // Set the bit
+            currentWord |= (1 << bitOffset);
+        } else {
+            // Clear the bit
+            currentWord &= ~(1 << bitOffset);
+        }
+
+        // Write back the updated word
+        userToClaimedEpochs[user][wordIndex] = currentWord;
+    }
+
+    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
+    function _getUserClaimedReward(address user, uint256 rewardId)
+        internal
+        view
+        returns (bool claimed)
+    {
+        // Determine the word/block index
+        uint256 wordIndex = rewardId / 256;
+        // The bit offset within that block
+        uint256 bitOffset = rewardId % 256;
+
+        // Read the 256-bit word
+        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+
+        // Shift right so that the target bit is in the least significant position,
+        // then check if it's 1
+        claimed = ((currentWord >> bitOffset) & 1) == 1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -369,54 +432,5 @@ contract BoringChef is ERC20 {
         } else {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
-    }
-
-/// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
-/// @dev `isClaimed = true` sets the bit; `isClaimed = false` clears the bit.
-function _setUserClaimedEpochs(
-    address user,
-    uint256 rewardId,
-    bool isClaimed
-)
-    internal
-{
-    // Determine which 256-bit word (the “block”) we need
-    uint256 wordIndex = rewardId / 256;
-
-    // The bit offset inside that 256-bit word
-    uint256 bitOffset = rewardId % 256;
-
-    // Read the current word (256 bits) from storage
-    uint256 currentWord = userToClaimedEpochs[user][wordIndex];
-
-    if (isClaimed) {
-        // Set the bit
-        currentWord |= (1 << bitOffset);
-    } else {
-        // Clear the bit
-        currentWord &= ~(1 << bitOffset);
-    }
-
-    // Write back the updated word
-    userToClaimedEpochs[user][wordIndex] = currentWord;
-}
-
-    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
-    function _getUserClaimedEpochs(address user, uint256 rewardId)
-        internal
-        view
-        returns (bool claimed)
-    {
-        // Determine the word/block index
-        uint256 wordIndex = rewardId / 256;
-        // The bit offset within that block
-        uint256 bitOffset = rewardId % 256;
-
-        // Read the 256-bit word
-        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
-
-        // Shift right so that the target bit is in the least significant position,
-        // then check if it’s 1
-        claimed = ((currentWord >> bitOffset) & 1) == 1;
     }
 }
