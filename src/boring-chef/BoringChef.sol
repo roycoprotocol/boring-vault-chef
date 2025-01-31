@@ -2,20 +2,18 @@
 pragma solidity 0.8.21;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
-import {Auth, Authority} from "solmate/auth/Auth.sol";
-
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 /// @title BoringChef
-contract BoringChef is ERC20, Auth {
+contract BoringChef is ERC20 {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
-    
+
     error NoFutureEpochRewards();
     error StartEpochMustBeBeforeEndEpoch();
     error UserDoesNotHaveEnoughSharesToWithdraw();
@@ -25,7 +23,7 @@ contract BoringChef is ERC20, Auth {
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
     event UserSharesUpdated(address indexed user, uint256 epoch, uint256 newShares);
-    event EpochUpdated(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp, uint256 endTimestamp);
+    event EpochStarted(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp);
     event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
     event UserRewardsClaimed(address indexed user, uint256 startEpoch, uint256 endEpoch, uint256 amount);
 
@@ -43,21 +41,18 @@ contract BoringChef is ERC20, Auth {
     struct BalanceUpdate {
         /// @dev The epoch in which the deposit was made
         uint256 epoch;
-
         /// @dev The total number of shares the user has at this epoch
         uint256 totalSharesBalance;
     }
-    
+
     /// @dev A record of an epoch
     struct Epoch {
         /// @dev The total number of shares eligible for rewards at this epoch
-        /// This is not the total number of shares deposited, but the total number 
+        /// This is not the total number of shares deposited, but the total number
         /// of shares that have been deposited and are eligible for rewards
         uint256 eligibleShares;
-
         /// @dev The timestamp at which the epoch starts
         uint256 startTimestamp;
-
         /// @dev The timestamp at which the epoch ends
         /// This is set to 0 if the epoch is not over
         uint256 endTimestamp;
@@ -67,13 +62,10 @@ contract BoringChef is ERC20, Auth {
     struct Reward {
         /// @dev The token being rewarded
         address token;
-
         /// @dev The rate at which the reward token is distributed per second
         uint256 rewardRate;
-
         /// @dev The epoch at which the reward starts
         uint256 startEpoch;
-
         /// @dev The epoch at which the reward ends
         uint256 endEpoch;
     }
@@ -105,14 +97,10 @@ contract BoringChef is ERC20, Auth {
 
     /// @notice Initialize the contract.
     /// @dev We do this by setting the share token and initializing the first epoch.
-    /// @param _owner The address of the owner.
     /// @param _name The name of the share token.
     /// @param _symbol The symbol of the share token.
     /// @param _decimals The decimals of the share token.
-    constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
-        ERC20(_name, _symbol, _decimals)
-        Auth(_owner, Authority(address(0)))
-    {}
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) ERC20(_name, _symbol, _decimals) {}
 
     /*//////////////////////////////////////////////////////////////
                        REWARD DISTRIBUTION LOGIC
@@ -125,12 +113,7 @@ contract BoringChef is ERC20, Auth {
     /// @param amount The amount of reward tokens to distribute.
     /// @param startEpoch The start epoch.
     /// @param endEpoch The end epoch.
-    function distributeRewards(
-        address token,
-        uint256 amount,
-        uint256 startEpoch,
-        uint256 endEpoch
-    ) external requiresAuth {
+    function distributeRewards(address token, uint256 amount, uint256 startEpoch, uint256 endEpoch) external {
         // Check that the start and end epochs are valid.
         if (startEpoch > endEpoch) {
             revert InvalidRewardCampaignDuration();
@@ -171,9 +154,7 @@ contract BoringChef is ERC20, Auth {
     /// @notice Claim rewards for a given array of tokens and epoch ranges.
     /// @dev We do this by calculating the rewards owed to the user for each token and epoch range.
     /// @param rewardIDs The IDs of the rewards to claim.
-    function claimRewards(
-        uint256[] calldata rewardIDs
-    ) external {
+    function claimRewards(uint256[] calldata rewardIDs) external {
         // Fetch all balance change updates for the caller.
         BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[msg.sender];
 
@@ -182,7 +163,7 @@ contract BoringChef is ERC20, Auth {
             // Retrieve the reward ID, start epoch, and end epoch.
             uint256 rewardId = rewardIDs[i];
             uint256 startEpoch = rewards[rewardId].startEpoch;
-            uint256 endEpoch   = rewards[rewardId].endEpoch;
+            uint256 endEpoch = rewards[rewardId].endEpoch;
 
             // Initialize a local accumulator for the total reward owed.
             uint256 rewardsOwed = 0;
@@ -191,11 +172,8 @@ contract BoringChef is ERC20, Auth {
             // summing up the user’s share of tokens from each epoch.
             for (uint256 epoch = startEpoch; epoch <= endEpoch; epoch++) {
                 // Determine the user’s share balance during this epoch.
-                // TODO: OPTIMIZE THIS HELLA 
-                uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(
-                    epoch,
-                    userBalanceUpdates
-                );
+                // TODO: OPTIMIZE THIS HELLA
+                uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
 
                 // Calculate total shares in that epoch (i.e. epochs[epoch].eligibleShares).
                 uint256 totalSharesAtEpoch = epochs[epoch].eligibleShares;
@@ -207,35 +185,32 @@ contract BoringChef is ERC20, Auth {
                 // for the specified reward ID:
                 uint256 epochDuration = epochs[epoch].endTimestamp - epochs[epoch].startTimestamp;
                 uint256 epochReward = rewards[rewardId].rewardRate.mulWadDown(epochDuration);
-                
+
                 // Multiply epochReward * fraction = userRewardThisEpoch.
                 // Add that to rewardsOwed.
                 rewardsOwed += epochReward.mulWadDown(userFraction);
             }
 
-        // After we finish summing the user’s share across all epochs in the given range,
-        // we have the total reward for that rewardId. Now we can do two things:
-        // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
-        // - Transfer tokens to the user.
+            // After we finish summing the user’s share across all epochs in the given range,
+            // we have the total reward for that rewardId. Now we can do two things:
+            // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
+            // - Transfer tokens to the user.
 
-        // Transfer the tokens to the user.
-        ERC20(rewards[rewardId].token).safeTransfer(msg.sender, rewardsOwed);
+            // Transfer the tokens to the user.
+            ERC20(rewards[rewardId].token).safeTransfer(msg.sender, rewardsOwed);
 
-        // Mark that the user has claimed this rewardID.
-        userToClaimedEpochs[msg.sender][rewardId] = true;
+            // Mark that the user has claimed this rewardID.
+            userToClaimedEpochs[msg.sender][rewardId] = true;
 
-        // Emit an event for clarity
-        emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
+            // Emit an event for clarity
+            emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
         }
     }
 
     /// @notice Find the user’s share balance at a specific epoch.
     /// @dev This can be done via binary search over balanceUpdates if the list is large.
     ///      For simplicity, you can also do a linear scan if the array is short.
-    function _findUserBalanceAtEpoch(
-        uint256 epoch,
-        BalanceUpdate[] memory balanceChanges
-    )
+    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
         internal
         view
         returns (uint256)
@@ -312,9 +287,12 @@ contract BoringChef is ERC20, Auth {
     /// @dev Roll over to the next epoch.
     /// @dev Should be called on every boring vault rebalance.
     function _rollOverEpoch() internal {
+        // Cache currentEpoch for gas savings
+        uint256 ongoingEpoch = currentEpoch;
+
         // Get the current and next epoch data.
-        Epoch storage currentEpochData = epochs[currentEpoch];
-        Epoch storage upcomingEpochData = epochs[++currentEpoch];
+        Epoch storage currentEpochData = epochs[ongoingEpoch];
+        Epoch storage upcomingEpochData = epochs[ongoingEpoch++];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
         currentEpochData.endTimestamp = block.timestamp;
@@ -324,6 +302,9 @@ contract BoringChef is ERC20, Auth {
         if (upcomingEpochData.eligibleShares == 0) {
             upcomingEpochData.eligibleShares = currentEpochData.eligibleShares;
         }
+
+        // Emit event for epoch start
+        emit EpochStarted(++currentEpoch, currentEpochData.eligibleShares, block.timestamp);
     }
 
     /// @notice Increase the user's share balance for the next epoch
@@ -384,7 +365,7 @@ contract BoringChef is ERC20, Auth {
         if (lastBalanceUpdate.epoch == epoch) {
             lastBalanceUpdate.totalSharesBalance = updatedBalance;
 
-        // If the last balance update is not for the current epoch, add a new balance update
+            // If the last balance update is not for the current epoch, add a new balance update
         } else {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
         }
