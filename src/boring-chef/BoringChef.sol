@@ -135,8 +135,7 @@ contract BoringChef is Auth, ERC20 {
         Epoch storage endEpochData = epochs[endEpoch];
 
         // Create a new reward and update the max reward ID
-        uint256 rewardId = maxRewardId;
-        rewards[rewardId] = Reward({
+        rewards[maxRewardId++] = Reward({
             token: token,
             // TODO prevent 2x epochs in one block, zeroing this
             // ^^^^ jack what did u mean by this?
@@ -144,9 +143,6 @@ contract BoringChef is Auth, ERC20 {
             startEpoch: startEpoch,
             endEpoch: endEpoch
         });
-
-        // Update the max reward ID
-        maxRewardId = rewardId + 1;
 
         // Transfer the reward tokens to the contract.
         // The incentives may be in the BoringVault already if claims are made to this contract
