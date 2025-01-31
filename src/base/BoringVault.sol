@@ -122,12 +122,12 @@ contract BoringVault is BoringChef, Auth, ERC721Holder, ERC1155Holder {
         if (address(hook) != address(0)) hook.beforeTransfer(from, to, msg.sender);
     }
 
-    function transfer(address to, uint256 amount) public override returns (bool) {
+    function transfer(address to, uint256 amount) public override(BoringChef) returns (bool) {
         _callBeforeTransfer(msg.sender, to);
         return super.transfer(to, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public override(BoringChef) returns (bool) {
         _callBeforeTransfer(from, to);
         return super.transferFrom(from, to, amount);
     }

@@ -20,6 +20,9 @@ contract BoringChef is ERC20 {
     event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
     event UserRewardsClaimed(address indexed user, uint256 startEpoch, uint256 endEpoch, uint256 amount);
 
+    event UserDepositedIntoEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
+    event UserWithdrawnFromEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
+
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -129,6 +132,24 @@ contract BoringChef is ERC20 {
     //     // }
     // }
 
+    function transfer(address to, uint256 amount) public virtual override(ERC20) returns (bool) {
+        // Transfer shares from msg.sender to "to"
+        super.transfer(to, amount);
+        // Account for withdrawal and forfeit incentives for current epoch for msg.sender
+        _decreaseCurrentEpochParticipation(msg.sender, amount);
+        // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
+        _increaseUpcomingEpochParticipation(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public virtual override(ERC20) returns (bool) {
+        // Transfer shares from "from" to "to"
+        super.transferFrom(from, to, amount);
+        // Account for withdrawal and forfeit incentives for current epoch for "from"
+        _decreaseCurrentEpochParticipation(from, amount);
+        // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
+        _increaseUpcomingEpochParticipation(to, amount);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -143,9 +164,11 @@ contract BoringChef is ERC20 {
     function _burn(address from, uint256 amount) internal override {
         // Burn the shares from the depositor
         super._burn(from, amount);
+        // Account for withdrawal and forfeit incentives for current epoch
+        _decreaseCurrentEpochParticipation(from, amount);
     }
 
-    function _increaseUpcomingEpochParticipation(address user, uint256 shareAmount) internal {
+    function _increaseUpcomingEpochParticipation(address user, uint256 amount) internal {
         // Cache currentEpoch for gas savings
         uint256 ongoingEpoch = currentEpoch;
         uint256 upcomingEpoch = ongoingEpoch + 1;
@@ -158,31 +181,48 @@ contract BoringChef is ERC20 {
         // If the next epoch shares have been initialized, increment them by the shares minted on entry
         // else rollover current shares plus the shares minted on entry
         upcomingEpochData.eligibleShares = upcomingEpochData.eligibleShares > 0
-            ? upcomingEpochData.eligibleShares + shareAmount
-            : currentEpochData.eligibleShares + shareAmount;
+            ? upcomingEpochData.eligibleShares + amount
+            : currentEpochData.eligibleShares + amount;
 
-        // Get the post-entry share balance of the user
+        // Get the post-deposit share balance of the user
         uint256 resultingShareBalance = balanceOf[user];
 
-        // Account for the entry for the user
-        BalanceUpdate[] storage balanceUpdates = userToBalanceUpdates[user];
-        BalanceUpdate storage lastBalanceUpdate = balanceUpdates[balanceUpdates.length - 1];
-        if (lastBalanceUpdate.epoch == upcomingEpoch) {
-            // If user already deposited into the next epoch, update the existing entry
-            lastBalanceUpdate.totalSharesBalance = resultingShareBalance;
-        } else {
-            // If user hasn't deposited into the next epoch, make a new entry
-            balanceUpdates.push(BalanceUpdate({epoch: upcomingEpoch, totalSharesBalance: resultingShareBalance}));
-        }
+        // Account for the deposit for the user
+        _updateUserShareAccounting(user, upcomingEpoch, resultingShareBalance);
+
+        // Emit event for this deposit
+        emit UserDepositedIntoEpoch(user, upcomingEpoch, amount);
     }
 
-    // function _decreaseCurrentEpochParticipation(uint256 amount, address user) internal {
-    //     Epoch storage currentEpoch = epochs[currentEpoch];
+    function _decreaseCurrentEpochParticipation(address user, uint256 amount) internal {
+        // Cache currentEpoch for gas savings
+        uint256 ongoingEpoch = currentEpoch;
 
-    //     currentEpoch.eligibleShares -= amount;
+        // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
+        Epoch storage currentEpochData = epochs[ongoingEpoch];
 
-    //     uint256 newNumShares = 12345; // TODO: connect this to token logic
-    //     // TODO: make sure that balanceChanges are unique on epochID;
-    //     userToBalanceUpdates[user].push(BalanceUpdate({epoch: currentEpoch, totalSharesBalance: newNumShares}));
-    // }
+        // Account for withdrawal from the current epoch
+        currentEpochData.eligibleShares -= amount;
+
+        // Get the post-withdraw share balance of the user
+        uint256 resultingShareBalance = balanceOf[user];
+
+        // Account for the withdrawal for the user
+        _updateUserShareAccounting(user, ongoingEpoch, resultingShareBalance);
+
+        // Emit event for this withdrawal
+        emit UserWithdrawnFromEpoch(user, ongoingEpoch, amount);
+    }
+
+    function _updateUserShareAccounting(address user, uint256 epoch, uint256 updatedBalance) internal {
+        // Get the balance update data for the user
+        BalanceUpdate[] storage balanceUpdates = userToBalanceUpdates[user];
+        BalanceUpdate storage lastBalanceUpdate = balanceUpdates[balanceUpdates.length - 1];
+        // Ensure no duplicate entries
+        if (lastBalanceUpdate.epoch == epoch) {
+            lastBalanceUpdate.totalSharesBalance = updatedBalance;
+        } else {
+            balanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
+        }
+    }
 }
