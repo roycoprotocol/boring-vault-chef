@@ -5,6 +5,7 @@ import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {BoringSafe} from "./BoringSafe.sol";
 
 /// @title BoringChef
 contract BoringChef is Auth, ERC20 {
@@ -75,6 +76,9 @@ contract BoringChef is Auth, ERC20 {
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
+    /// @dev A contract to hold rewards to make sure the BoringVault doesn't spend them
+    BoringSafe public immutable boringSafe;
+
     /// @dev The current epoch
     uint256 public currentEpoch;
 
@@ -105,7 +109,9 @@ contract BoringChef is Auth, ERC20 {
     constructor(address _owner, string memory _name, string memory _symbol, uint8 _decimals)
         Auth(_owner, Authority(address(0)))
         ERC20(_name, _symbol, _decimals)
-    {}
+    {
+        boringSafe = new BoringSafe();
+    }
 
     /*//////////////////////////////////////////////////////////////
                        REWARD DISTRIBUTION LOGIC
@@ -144,10 +150,8 @@ contract BoringChef is Auth, ERC20 {
             endEpoch: endEpoch
         });
 
-        // Transfer the reward tokens to the contract.
-        // The incentives may be in the BoringVault already if claims are made to this contract
-        // If that's true, should omit the following
-        ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        // Transfer the reward tokens to the BoringSafe.
+        ERC20(token).safeTransferFrom(msg.sender, address(boringSafe), amount);
 
         // Emit rewards distributed event
         emit RewardsDistributed(token, startEpoch, endEpoch, amount);
@@ -204,7 +208,7 @@ contract BoringChef is Auth, ERC20 {
             // - Transfer tokens to the user.
 
             // Transfer the tokens to the user.
-            ERC20(reward.token).safeTransfer(msg.sender, rewardsOwed);
+            boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
 
             // Mark that the user has claimed this rewardID.
             userToClaimedEpochs[msg.sender][rewardIDs[i]] = true;
