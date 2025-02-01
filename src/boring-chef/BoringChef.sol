@@ -92,7 +92,7 @@ contract BoringChef is Auth, ERC20 {
     mapping(uint256 rewardId => Reward) public rewards;
     uint256 public maxRewardId;
 
-    /// @dev Maps users to an array of booleans representing whether they have claimed rewards for each epochID.
+    /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
     /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardIds in that bucket (monotonically increasing) has been claimed.
     mapping(address user => mapping(uint256 rewardBucket => uint256 claimedRewards)) public
@@ -153,7 +153,7 @@ contract BoringChef is Auth, ERC20 {
         });
 
         // Transfer the reward tokens to the BoringSafe.
-        ERC20(token).safeTransferFrom(msg.sender, address(boringSafe), amount);
+        ERC20(token).safeTransfer(address(boringSafe), amount);
 
         // Emit rewards distributed event
         emit RewardsDistributed(token, startEpoch, endEpoch, amount);
@@ -347,7 +347,7 @@ contract BoringChef is Auth, ERC20 {
         }
 
         // Emit event for epoch start
-        emit EpochStarted(++currentEpoch, currentEpochData.eligibleShares, block.timestamp);
+        emit EpochStarted(++currentEpoch, upcomingEpochData.eligibleShares, block.timestamp);
     }
 
     /// @notice Increase the user's share balance for the next epoch
