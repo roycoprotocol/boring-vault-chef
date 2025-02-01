@@ -1,5 +1,5 @@
-// // SPDX-License-Identifier: UNLICENSED
-// pragma solidity ^0.8.0;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.21;
 
 // import { Owned } from "lib/solmate/src/auth/Owned.sol";
 // import { ERC20 } from "lib/solmate/src/tokens/ERC20.sol";

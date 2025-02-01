@@ -6,10 +6,10 @@ import {BoringChef} from "src/boring-chef/BoringChef.sol";
 
 import {Test, stdStorage, StdStorage, stdError, console} from "@forge-std/Test.sol";
 
-contract BoringVaultTest is Test, MerkleTreeHelper {
-    using SafeTransferLib for ERC20;
-    using FixedPointMathLib for uint256;
-    using stdStorage for StdStorage;
+contract BoringVaultTest is Test {
+    // using SafeTransferLib for ERC20;
+    // using FixedPointMathLib for uint256;
+    // using stdStorage for StdStorage;
 
     BoringVault public boringVault;
     BoringChef public boringChef;
