@@ -170,26 +170,57 @@ contract BoringChef is Auth, ERC20 {
         // Fetch all balance change updates for the caller.
         BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[msg.sender];
 
+        // Variables to cache reward claim data as a gas optimization
+        uint256 cachedRewardBucket;
+        uint256 cachedClaimedRewards;
+
         // For each reward ID, we'll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardIds.length; i++) {
             // Retrieve the reward ID, start epoch, and end epoch.
-            Reward storage reward = rewards[rewardIds[i]];
+            uint256 rewardId = rewardIds[i];
+            Reward storage reward = rewards[rewardId];
             uint256 startEpoch = reward.startEpoch;
             uint256 endEpoch = reward.endEpoch;
 
+            // Cache management (reading and writing)
+            {
+                // Determine the reward bucket that this rewardId belongs in
+                uint256 rewardBucket = rewardId / 256;
+
+                if (i == 0) {
+                    // Read the 256 bit bit-field to get this rewardId's claim status
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                } else if (cachedRewardBucket != rewardBucket) {
+                    // Write back the cached claim data to persistent storage
+                    userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
+                    // Updated cache with new reward bucket and
+                    cachedRewardBucket = rewardBucket;
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                }
+
+                // The bit offset for rewardId within that bucket
+                uint256 bitOffset = rewardId % 256;
+                // Shift right so that the target bit is in the least significant position,
+                // then check if it's 1
+                bool claimed = ((cachedClaimedRewards >> bitOffset) & 1) == 1;
+
+                // If the user has already claimed this reward, skip.
+                if (claimed) {
+                    continue;
+                } else {
+                    // If user hasn't claimed this reward
+                    // Set the bit corresponding to rewardId to true - indicating a processed claim
+                    cachedClaimedRewards |= (1 << bitOffset);
+                }
+            }
+
             // Initialize a local accumulator for the total reward owed.
             uint256 rewardsOwed = 0;
-
-            // If the user has already claimed this reward, skip.
-            if (_getUserClaimedReward(msg.sender, rewardIds[i])) {
-                continue;
-            }
 
             // We want to iterate over the epoch range [startEpoch..endEpoch],
             // summing up the user's share of tokens from each epoch.
             for (uint256 epoch = startEpoch; epoch <= endEpoch; epoch++) {
                 // Determine the user's share balance during this epoch.
-                // TODO: OPTIMIZE THIS HELLA
                 uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
 
                 // If the user is owed rewards for this epoch, remit them
@@ -218,13 +249,13 @@ contract BoringChef is Auth, ERC20 {
                 // Transfer the tokens to the user.
                 boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
 
-                // Mark that the user has claimed this rewardId.
-                _setUserClaimedReward(msg.sender, rewardIds[i]);
-
                 // Emit an event for clarity
                 emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
             }
         }
+
+        // Write back the final cache to persistent storage
+        userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -260,47 +291,6 @@ contract BoringChef is Auth, ERC20 {
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
         _increaseUpcomingEpochParticipation(to, amount);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          CLAIM BITMASK LOGIC
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
-    function epochClaimed(address user, uint256 rewardId) public view returns (bool claimed) {
-        return _getUserClaimedReward(user, rewardId);
-    }
-
-    /// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
-    function _setUserClaimedReward(address user, uint256 rewardId) internal {
-        // Determine the reward bucket that this rewardId belongs in
-        uint256 rewardBucket = rewardId / 256;
-        // The bit offset for rewardId within that bucket
-        uint256 bitOffset = rewardId % 256;
-
-        // Read the 256 bit bit-field to set this rewardId's claim status
-        uint256 claimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
-
-        // Set the bit corresponding to rewardId to
-        claimedRewards |= (1 << bitOffset);
-
-        // Write back the updated word
-        userToRewardBucketToClaimedRewards[user][rewardBucket] = claimedRewards;
-    }
-
-    /// @notice Returns whether `user` has claimed `rewardId` (true/false).
-    function _getUserClaimedReward(address user, uint256 rewardId) internal view returns (bool claimed) {
-        // Determine the reward bucket that this rewardId belongs in
-        uint256 rewardBucket = rewardId / 256;
-        // The bit offset for rewardId within that bucket
-        uint256 bitOffset = rewardId % 256;
-
-        // Read the 256 bit bit-field to get this rewardId's claim status
-        uint256 claimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
-
-        // Shift right so that the target bit is in the least significant position,
-        // then check if it's 1
-        claimed = ((claimedRewards >> bitOffset) & 1) == 1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -367,11 +357,8 @@ contract BoringChef is Auth, ERC20 {
             ? upcomingEpochData.eligibleShares + amount
             : currentEpochData.eligibleShares + amount;
 
-        // Get the post-deposit share balance of the user
-        uint256 resultingShareBalance = balanceOf[user];
-
         // Account for the deposit for the user
-        _updateUserShareAccounting(user, upcomingEpoch, resultingShareBalance);
+        _updateUserShareAccounting(user, upcomingEpoch);
 
         // Emit event for this deposit
         emit UserDepositedIntoEpoch(user, upcomingEpoch, amount);
@@ -388,29 +375,26 @@ contract BoringChef is Auth, ERC20 {
         // Account for withdrawal from the current epoch
         currentEpochData.eligibleShares -= amount;
 
-        // Get the post-withdraw share balance of the user
-        uint256 resultingShareBalance = balanceOf[user];
-
         // Account for the withdrawal for the user
-        _updateUserShareAccounting(user, ongoingEpoch, resultingShareBalance);
+        _updateUserShareAccounting(user, ongoingEpoch);
 
         // Emit event for this withdrawal
         emit UserWithdrawnFromEpoch(user, ongoingEpoch, amount);
     }
 
     /// @notice Update the user's share balance for a given epoch
-    function _updateUserShareAccounting(address user, uint256 epoch, uint256 updatedBalance) internal {
+    function _updateUserShareAccounting(address user, uint256 epoch) internal {
         // Get the balance update data for the user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
         BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
 
         // Ensure no duplicate entries
         if (lastBalanceUpdate.epoch == epoch) {
-            lastBalanceUpdate.totalSharesBalance = updatedBalance;
+            lastBalanceUpdate.totalSharesBalance = balanceOf[user];
 
             // If the last balance update is not for the current epoch, add a new balance update
         } else {
-            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: updatedBalance}));
+            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: balanceOf[user]}));
         }
     }
 
