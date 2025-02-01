@@ -6,7 +6,7 @@ import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 
 /// @title BoringSafe
-/// @notice Lightweight middleware contract for sending funds from itself to the owner.
+/// @notice Lightweight middleware contract for holding funds that have been commited to reward campaigns in BoringChef.
 contract BoringSafe is Owned(msg.sender) {
     using SafeTransferLib for ERC20;
 
@@ -14,7 +14,7 @@ contract BoringSafe is Owned(msg.sender) {
     /// @notice Only callable by the owner (BoringChef).
     /// @param token The address of the ERC20 token to transfer.
     /// @param amount The amount of tokens  to transfer.
-    /// @param to The recipient address. Must be equal to the owner.
+    /// @param to The recipient address.
     function transfer(address token, address to, uint256 amount) external onlyOwner {
         // Transfer ERC20 tokens
         ERC20(token).safeTransfer(to, amount);

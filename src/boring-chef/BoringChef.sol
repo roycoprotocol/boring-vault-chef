@@ -16,6 +16,7 @@ contract BoringChef is Auth, ERC20 {
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
+    error ArrayLengthMismatch();
     error NoFutureEpochRewards();
     error StartEpochMustBeBeforeEndEpoch();
     error UserDoesNotHaveEnoughSharesToWithdraw();
@@ -119,44 +120,54 @@ contract BoringChef is Auth, ERC20 {
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Distribute rewards retroactively to users deposited during a given epoch range.
-    /// @dev We do this by creating a new Reward object and storing it in the rewards mapping.
-    /// @dev We also transfer the reward tokens to the contract.
-    /// @param token The address of the reward token.
-    /// @param amount The amount of reward tokens to distribute.
-    /// @param startEpoch The start epoch.
-    /// @param endEpoch The end epoch.
-    function distributeRewards(address token, uint256 amount, uint256 startEpoch, uint256 endEpoch)
-        external
-        requiresAuth
-    {
-        // Check that the start and end epochs are valid.
-        if (startEpoch > endEpoch) {
-            revert InvalidRewardCampaignDuration();
+    /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
+    /// @dev Creates new Reward objects and stores them in the rewards mapping, and transfers the reward tokens to the BoringSafe.
+    /// @param tokens Array of addresses for the reward tokens.
+    /// @param amounts Array of reward token amounts to distribute.
+    /// @param startEpochs Array of start epochs for each reward distribution.
+    /// @param endEpochs Array of end epochs for each reward distribution.
+    function distributeRewards(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        uint256[] calldata startEpochs,
+        uint256[] calldata endEpochs
+    ) external requiresAuth {
+        // Ensure that all arrays are the same length.
+        if (tokens.length != amounts.length || tokens.length != startEpochs.length || tokens.length != endEpochs.length)
+        {
+            revert ArrayLengthMismatch();
         }
-        if (endEpoch >= currentEpoch) {
-            revert NoFutureEpochRewards();
+
+        // Loop over each set of parameters.
+        for (uint256 i = 0; i < tokens.length; i++) {
+            // Check that the start and end epochs are valid.
+            if (startEpochs[i] > endEpochs[i]) {
+                revert InvalidRewardCampaignDuration();
+            }
+            if (endEpochs[i] >= currentEpoch) {
+                revert NoFutureEpochRewards();
+            }
+
+            // Get the start and end epoch data.
+            Epoch storage startEpochData = epochs[startEpochs[i]];
+            Epoch storage endEpochData = epochs[endEpochs[i]];
+
+            // Create a new reward and update the max reward ID.
+            rewards[maxRewardId++] = Reward({
+                token: tokens[i],
+                // Calculate the reward rate over the epoch period.
+                // Consider the case where endEpochData.endTimestamp == startEpochData.startTimestamp
+                rewardRate: amounts[i].divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
+                startEpoch: startEpochs[i],
+                endEpoch: endEpochs[i]
+            });
+
+            // Transfer the reward tokens to the BoringSafe.
+            ERC20(tokens[i]).safeTransfer(address(boringSafe), amounts[i]);
+
+            // Emit an event for this reward distribution.
+            emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i]);
         }
-
-        // Get the start and end epoch data.
-        Epoch storage startEpochData = epochs[startEpoch];
-        Epoch storage endEpochData = epochs[endEpoch];
-
-        // Create a new reward and update the max reward ID
-        rewards[maxRewardId++] = Reward({
-            token: token,
-            // TODO prevent 2x epochs in one block, zeroing this
-            // ^^^^ jack what did u mean by this?
-            rewardRate: amount.divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
-            startEpoch: startEpoch,
-            endEpoch: endEpoch
-        });
-
-        // Transfer the reward tokens to the BoringSafe.
-        ERC20(token).safeTransfer(address(boringSafe), amount);
-
-        // Emit rewards distributed event
-        emit RewardsDistributed(token, startEpoch, endEpoch, amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -174,18 +185,18 @@ contract BoringChef is Auth, ERC20 {
         uint256 cachedRewardBucket;
         uint256 cachedClaimedRewards;
 
+        uint256 rewardsLength = rewardIds.length;
         // For each reward ID, we'll calculate how many tokens are owed.
-        for (uint256 i = 0; i < rewardIds.length; i++) {
+        for (uint256 i = 0; i < rewardsLength; i++) {
             // Retrieve the reward ID, start epoch, and end epoch.
-            uint256 rewardId = rewardIds[i];
-            Reward storage reward = rewards[rewardId];
+            Reward storage reward = rewards[rewardIds[i]];
             uint256 startEpoch = reward.startEpoch;
             uint256 endEpoch = reward.endEpoch;
 
             // Cache management (reading and writing)
             {
                 // Determine the reward bucket that this rewardId belongs in
-                uint256 rewardBucket = rewardId / 256;
+                uint256 rewardBucket = rewardIds[i] / 256;
 
                 if (i == 0) {
                     // Read the 256 bit bit-field to get this rewardId's claim status
@@ -193,23 +204,23 @@ contract BoringChef is Auth, ERC20 {
                 } else if (cachedRewardBucket != rewardBucket) {
                     // Write back the cached claim data to persistent storage
                     userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
-                    // Updated cache with new reward bucket and
+                    // Updated cache with the new reward bucket and rewards bit field
                     cachedRewardBucket = rewardBucket;
                     cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
                 }
 
                 // The bit offset for rewardId within that bucket
-                uint256 bitOffset = rewardId % 256;
-                // Shift right so that the target bit is in the least significant position,
-                // then check if it's 1
-                bool claimed = ((cachedClaimedRewards >> bitOffset) & 1) == 1;
+                uint256 bitOffset = rewardIds[i] % 256;
 
-                // If the user has already claimed this reward, skip.
+                // Shift right so that the target bit is in the least significant position,
+                // then check if it's 1 (indicating that it has been claimed)
+                bool claimed = ((cachedClaimedRewards >> bitOffset) & 1) == 1;
                 if (claimed) {
+                    // If the user has already claimed this reward, skip.
                     continue;
                 } else {
                     // If user hasn't claimed this reward
-                    // Set the bit corresponding to rewardId to true - indicating a processed claim
+                    // Set the bit corresponding to rewardId to true - indicating it has been claimed
                     cachedClaimedRewards |= (1 << bitOffset);
                 }
             }
