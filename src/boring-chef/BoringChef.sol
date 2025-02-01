@@ -28,7 +28,7 @@ contract BoringChef is Auth, ERC20 {
     event UserSharesUpdated(address indexed user, uint256 epoch, uint256 newShares);
     event EpochStarted(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp);
     event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
-    event UserRewardsClaimed(address indexed user, uint256 startEpoch, uint256 endEpoch, uint256 amount);
+    event UserRewardsClaimed(address indexed user, uint256 rewardId, uint256 amount);
 
     event RewardsDistributed(
         address indexed token, uint256 indexed startEpoch, uint256 indexed endEpoch, uint256 amount
@@ -188,11 +188,6 @@ contract BoringChef is Auth, ERC20 {
         uint256 rewardsLength = rewardIds.length;
         // For each reward ID, we'll calculate how many tokens are owed.
         for (uint256 i = 0; i < rewardsLength; i++) {
-            // Retrieve the reward ID, start epoch, and end epoch.
-            Reward storage reward = rewards[rewardIds[i]];
-            uint256 startEpoch = reward.startEpoch;
-            uint256 endEpoch = reward.endEpoch;
-
             // Cache management (reading and writing)
             {
                 // Determine the reward bucket that this rewardId belongs in
@@ -225,12 +220,14 @@ contract BoringChef is Auth, ERC20 {
                 }
             }
 
+            // Retrieve the reward ID, start epoch, and end epoch.
+            Reward storage reward = rewards[rewardIds[i]];
             // Initialize a local accumulator for the total reward owed.
             uint256 rewardsOwed = 0;
 
             // We want to iterate over the epoch range [startEpoch..endEpoch],
             // summing up the user's share of tokens from each epoch.
-            for (uint256 epoch = startEpoch; epoch <= endEpoch; epoch++) {
+            for (uint256 epoch = reward.startEpoch; epoch <= reward.endEpoch; epoch++) {
                 // Determine the user's share balance during this epoch.
                 uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
 
@@ -260,8 +257,8 @@ contract BoringChef is Auth, ERC20 {
                 // Transfer the tokens to the user.
                 boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
 
-                // Emit an event for clarity
-                emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
+                // Emit an event for claim
+                emit UserRewardsClaimed(msg.sender, rewardIds[i], rewardsOwed);
             }
         }
 
