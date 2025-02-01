@@ -179,7 +179,7 @@ contract BoringChef is Auth, ERC20 {
             uint256 rewardsOwed = 0;
 
             // If the user has already claimed this reward, skip.
-            if (_getUserClaimedReward(msg.sender, rewardId)) {
+            if (_getUserClaimedReward(msg.sender, rewardIDs[i])) {
                 continue;
             }
 
@@ -216,29 +216,11 @@ contract BoringChef is Auth, ERC20 {
             boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
 
             // Mark that the user has claimed this rewardID.
-            _setUserClaimedReward(msg.sender, rewardId, true);
+            _setUserClaimedReward(msg.sender, rewardIDs[i], true);
 
             // Emit an event for clarity
             emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
         }
-    }
-
-    /// @notice Find the user's share balance at a specific epoch.
-    /// @dev This can be done via binary search over balanceUpdates if the list is large.
-    ///      For simplicity, you can also do a linear scan if the array is short.
-    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
-        internal
-        view
-        returns (uint256)
-    {
-        // Just iterate backwards until we find the epoch.
-        uint256 i = balanceChanges.length - 1;
-        while (balanceChanges[i].epoch > epoch) {
-            i--;
-        }
-
-        // Return the user's balance at the most recent epoch before the target epoch.
-        return balanceChanges[currentEpoch].totalSharesBalance;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -287,13 +269,7 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
     /// @dev `isClaimed = true` sets the bit; `isClaimed = false` clears the bit.
-    function _setUserClaimedReward(
-        address user,
-        uint256 rewardId,
-        bool isClaimed
-    )
-        internal
-    {
+    function _setUserClaimedReward(address user, uint256 rewardId, bool isClaimed) internal {
         // Determine which 256-bit word (the “block”) we need
         uint256 wordIndex = rewardId / 256;
 
@@ -316,11 +292,7 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /// @notice Returns whether `user` has claimed `rewardId` (true/false).
-    function _getUserClaimedReward(address user, uint256 rewardId)
-        internal
-        view
-        returns (bool claimed)
-    {
+    function _getUserClaimedReward(address user, uint256 rewardId) internal view returns (bool claimed) {
         // Determine the word/block index
         uint256 wordIndex = rewardId / 256;
         // The bit offset within that block
