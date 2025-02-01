@@ -93,8 +93,10 @@ contract BoringChef is Auth, ERC20 {
     uint256 public maxRewardId;
 
     /// @dev Maps users to an array of booleans representing whether they have claimed rewards for each epochID.
-    /// @dev Each bit in userToClaimedEpochs[user][rewardIds] corresponds to one reward ID.
-    mapping(address user => mapping(uint256 rewardIds => uint256 claimedEpochBitMask)) public userToClaimedEpochs;
+    /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
+    /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardIds in that bucket (monotonically increasing) has been claimed.
+    mapping(address user => mapping(uint256 rewardBucket => uint256 claimedRewards)) public
+        userToRewardBucketToClaimedRewards;
 
     /*//////////////////////////////////////////////////////////////
                                 CONSTRUCTOR
@@ -163,15 +165,15 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Claim rewards for a given array of tokens and epoch ranges.
     /// @dev We do this by calculating the rewards owed to the user for each token and epoch range.
-    /// @param rewardIDs The IDs of the rewards to claim.
-    function claimRewards(uint256[] calldata rewardIDs) external {
+    /// @param rewardIds The IDs of the rewards to claim.
+    function claimRewards(uint256[] calldata rewardIds) external {
         // Fetch all balance change updates for the caller.
         BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[msg.sender];
 
         // For each reward ID, we'll calculate how many tokens are owed.
-        for (uint256 i = 0; i < rewardIDs.length; i++) {
+        for (uint256 i = 0; i < rewardIds.length; i++) {
             // Retrieve the reward ID, start epoch, and end epoch.
-            Reward storage reward = rewards[rewardIDs[i]];
+            Reward storage reward = rewards[rewardIds[i]];
             uint256 startEpoch = reward.startEpoch;
             uint256 endEpoch = reward.endEpoch;
 
@@ -179,7 +181,7 @@ contract BoringChef is Auth, ERC20 {
             uint256 rewardsOwed = 0;
 
             // If the user has already claimed this reward, skip.
-            if (_getUserClaimedReward(msg.sender, rewardIDs[i])) {
+            if (_getUserClaimedReward(msg.sender, rewardIds[i])) {
                 continue;
             }
 
@@ -207,19 +209,21 @@ contract BoringChef is Auth, ERC20 {
                 }
             }
 
-            // After we finish summing the user's share across all epochs in the given range,
-            // we have the total reward for that rewardId. Now we can do two things:
-            // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
-            // - Transfer tokens to the user.
+            if (rewardsOwed > 0) {
+                // After we finish summing the user's share across all epochs in the given range,
+                // we have the total reward for that rewardId. Now we can do two things:
+                // - Mark that the user has claimed [startEpoch..endEpoch] for this reward (if needed).
+                // - Transfer tokens to the user.
 
-            // Transfer the tokens to the user.
-            boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
+                // Transfer the tokens to the user.
+                boringSafe.transfer(reward.token, msg.sender, rewardsOwed);
 
-            // Mark that the user has claimed this rewardID.
-            _setUserClaimedReward(msg.sender, rewardIDs[i], true);
+                // Mark that the user has claimed this rewardId.
+                _setUserClaimedReward(msg.sender, rewardIds[i]);
 
-            // Emit an event for clarity
-            emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
+                // Emit an event for clarity
+                emit UserRewardsClaimed(msg.sender, startEpoch, endEpoch, rewardsOwed);
+            }
         }
     }
 
@@ -268,42 +272,35 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /// @notice Sets the boolean “claimed” flag for `rewardId` in user’s bitmask.
-    /// @dev `isClaimed = true` sets the bit; `isClaimed = false` clears the bit.
-    function _setUserClaimedReward(address user, uint256 rewardId, bool isClaimed) internal {
-        // Determine which 256-bit word (the “block”) we need
-        uint256 wordIndex = rewardId / 256;
-
-        // The bit offset inside that 256-bit word
+    function _setUserClaimedReward(address user, uint256 rewardId) internal {
+        // Determine the reward bucket that this rewardId belongs in
+        uint256 rewardBucket = rewardId / 256;
+        // The bit offset for rewardId within that bucket
         uint256 bitOffset = rewardId % 256;
 
-        // Read the current word (256 bits) from storage
-        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+        // Read the 256 bit bit-field to set this rewardId's claim status
+        uint256 claimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
 
-        if (isClaimed) {
-            // Set the bit
-            currentWord |= (1 << bitOffset);
-        } else {
-            // Clear the bit
-            currentWord &= ~(1 << bitOffset);
-        }
+        // Set the bit corresponding to rewardId to
+        claimedRewards |= (1 << bitOffset);
 
         // Write back the updated word
-        userToClaimedEpochs[user][wordIndex] = currentWord;
+        userToRewardBucketToClaimedRewards[user][rewardBucket] = claimedRewards;
     }
 
     /// @notice Returns whether `user` has claimed `rewardId` (true/false).
     function _getUserClaimedReward(address user, uint256 rewardId) internal view returns (bool claimed) {
-        // Determine the word/block index
-        uint256 wordIndex = rewardId / 256;
-        // The bit offset within that block
+        // Determine the reward bucket that this rewardId belongs in
+        uint256 rewardBucket = rewardId / 256;
+        // The bit offset for rewardId within that bucket
         uint256 bitOffset = rewardId % 256;
 
-        // Read the 256-bit word
-        uint256 currentWord = userToClaimedEpochs[user][wordIndex];
+        // Read the 256 bit bit-field to get this rewardId's claim status
+        uint256 claimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
 
         // Shift right so that the target bit is in the least significant position,
         // then check if it's 1
-        claimed = ((currentWord >> bitOffset) & 1) == 1;
+        claimed = ((claimedRewards >> bitOffset) & 1) == 1;
     }
 
     /*//////////////////////////////////////////////////////////////
