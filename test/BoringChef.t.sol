@@ -99,12 +99,50 @@ contract BoringVaultTest is Test {
 
     /// @notice Test that a single deposit works.
     function testSingleDeposit() external {
-        // Deposit 100 tokens into the vault.
-        token.approve(address(boringVault), 100e18);
-        teller.deposit(ERC20(address(token)), 100e18, 0);
+        // Assume deposit amount of 100 tokens.
+        uint256 depositAmount = 100e18;
 
-        // // Check that the user's balance is 100e18.
-        // assertEq(boringVault.balanceOf(testUser), 100e18);
+        // We want testUser to perform the deposit.
+        // Use vm.prank to simulate a call from testUser.
+        vm.startPrank(testUser);
+
+        // Have testUser approve the vault to spend the deposit tokens.
+        // (Assuming that testUser already has an initial balance; see setUp in your test contract.)
+        token.approve(address(boringVault), depositAmount);
+
+        // Call the deposit function on the teller.
+        // The third parameter (minimumMint) is set to 0 for simplicity.
+        uint256 sharesMinted = teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Check that the vault's share balance for testUser increased correctly.
+        // The balanceOf function inherited from ERC20 should now return sharesMinted for testUser.
+        assertEq(boringVault.balanceOf(testUser), sharesMinted, "User share balance in vault is incorrect.");
+
+        // Assuming the rate is 1:1, then the shares minted should equal the deposit amount.
+        assertEq(sharesMinted, depositAmount, "Shares minted should equal the deposit amount under a 1:1 rate.");
+
+        // Check that the user's token balance has decreased by the deposit amount.
+        // (Assuming testUser started with 1,000e18 tokens, the new balance should be 900e18.)
+        assertEq(token.balanceOf(testUser), 900e18, "User token balance did not decrease correctly.");
+
+        // Check that the user's balance update record has been added for the upcoming epoch.
+        // For this test we expect that there is at least one update. If this is the first deposit,
+        // it should be stored at index 0.
+        (uint256 recordedEpoch, uint256 recordedBalance) = boringVault.balanceUpdates(testUser, 0);
+        // The update should be for epoch = currentEpoch + 1.
+        uint256 expectedEpoch = boringVault.currentEpoch() + 1;
+        assertEq(recordedEpoch, expectedEpoch, "The balance update epoch is not correct.");
+        // The recorded balance should match the user's current share balance.
+        assertEq(recordedBalance, boringVault.balanceOf(testUser), "The recorded user balance does not match the vault balance.");
+
+        // Check that the upcoming epoch's eligibleShares equals the deposit amount.
+        // Since this is the first deposit and assuming no other deposits have occurred, 
+        // the upcoming epoch (currentEpoch + 1) should have eligibleShares equal to depositAmount.
+        (uint256 epochEligibleShares, ,) = boringVault.epochs(expectedEpoch);
+        assertEq(epochEligibleShares, depositAmount, "Upcoming epoch's eligible shares not updated correctly.");
+
+        // End the prank.
+        vm.stopPrank();
     }
     
     function testMultipleDeposits() external {}
@@ -178,4 +216,3 @@ contract BoringVaultTest is Test {
     function testFractionalDivisionsRounding() external {}
     function testStressManyEpochs() external {}
 }
-
