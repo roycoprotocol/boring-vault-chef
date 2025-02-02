@@ -394,6 +394,13 @@ contract BoringChef is Auth, ERC20 {
     function _updateUserShareAccounting(address user, uint256 epoch) internal {
         // Get the balance update data for the user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
+
+        // If there are no balance updates, create a new one
+        if (userBalanceUpdates.length == 0) {
+            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: balanceOf[user]}));
+        }
+    
+        // Get the last balance update
         BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
 
         // Ensure no duplicate entries
