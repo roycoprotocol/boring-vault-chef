@@ -120,6 +120,12 @@ contract BoringChef is Auth, ERC20 {
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Roll over to the next epoch.
+    /// @dev Can only be called by an authorized address.
+    function rollOverEpoch() external requiresAuth {
+        _rollOverEpoch();
+    }
+
     /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
     /// @dev Creates new Reward objects and stores them in the rewards mapping, and transfers the reward tokens to the BoringSafe.
     /// @param tokens Array of addresses for the reward tokens.
