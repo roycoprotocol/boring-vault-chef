@@ -375,6 +375,7 @@ contract TellerWithMultiAssetSupport is Auth, BeforeTransferHook, ReentrancyGuar
         external
         payable
         nonReentrant
+        requiresAuth
         returns (uint256 shares)
     {
         Asset memory asset = _beforeDeposit(depositAsset);
