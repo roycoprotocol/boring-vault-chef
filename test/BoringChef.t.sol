@@ -700,36 +700,65 @@ contract BoringVaultTest is Test {
             // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
             uint256 duration0 = (epoch0End - epoch0Start) + (epoch1End - epoch1Start);
             uint256 totalReward0 = rRate0.mulWadDown(duration0);
-            assertApproxEqAbs(totalReward0, 60e18, 1e12, "Total distributed reward for reward 0 mismatch");
-        }
-        // // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
-        // {
-        //     (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = boringVault.rewards(1);
-        //     assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
-        //     assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
-        //     assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
-        //     // Retrieve epoch data for epochs 1 and 2.
-        //     ( , epoch1Start, epoch1End) = boringVault.epochs(1);
-        //     ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
-        //     uint256 duration1 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start);
-        //     uint256 totalReward1 = rRate1.mulWadDown(duration1);
-        //     assertApproxEqAbs(totalReward1, 12e18, 1e12, "Total distributed reward for reward 1 mismatch");
-        // }
+            assertApproxEqAbs(totalReward0, 60e18, 1e6, "Total distributed reward for reward 0 mismatch");
 
-        // // Reward 2: Distribution for rewardToken2 from epoch 1 to 3.
-        // {
-        //     (address rToken2, uint256 rRate2, uint256 rStart2, uint256 rEnd2) = (boringVault.rewards(2).token, boringVault.rewards(2).rewardRate, boringVault.rewards(2).startEpoch, boringVault.rewards(2).endEpoch);
-        //     assertEq(rToken2, address(rewardToken2), "Reward 2 token mismatch");
-        //     assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
-        //     assertEq(rEnd2, 3, "Reward 2 endEpoch mismatch");
-        //     // Retrieve epoch data for epochs 1, 2, and 3.
-        //     ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
-        //     ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
-        //     ( , uint256 epoch3Start, uint256 epoch3End) = boringVault.epochs(3);
-        //     uint256 duration2 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start) + (epoch3End - epoch3Start);
-        //     uint256 totalReward2 = rRate2.mulWadDown(duration2);
-        //     assertApproxEqAbs(totalReward2, 10e18, 1e12, "Total distributed reward for reward 2 mismatch");
-        // }
+            // Since our user's had no eligible shares at epoch 0, we need to calculate exactly how many rewards they are owed.
+            // Since we have 3 users, we divide the total reward by 3.
+            duration0 = (epoch1End - epoch1Start);
+            uint256 userReward0 = (rRate0.mulWadDown(duration0)).divWadDown(3e18);
+
+            // Check that the reward has been distributed to the correct users.
+            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 20 reward 0");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 0), userReward0, 1e12, "TestUser should have 20 reward 0");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 0), userReward0, 1e12, "AnotherUser should have 20 reward 0");
+        }
+
+        // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
+        {
+            (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = boringVault.rewards(1);
+            assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
+            assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
+            assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
+            // Retrieve epoch data for epochs 1 and 2.
+            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+            // Total duration for reward 1 is from epoch1.startTimestamp to epoch1.endTimestamp plus epoch2 duration.
+            uint256 duration1 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start);
+            uint256 totalReward1 = rRate1.mulWadDown(duration1);
+            assertApproxEqAbs(totalReward1, 12e18, 1e6, "Total distributed reward for reward 1 mismatch");
+
+            // Calculate the reward for each user.
+            uint256 userReward1 = totalReward1.divWadDown(3e18);
+
+            // Check that the reward has been distributed to the correct users.
+            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 1), userReward1, 1e12, "User should have 4 reward 1");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 1), userReward1, 1e12, "TestUser should have 4 reward 1");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 1), userReward1, 1e12, "AnotherUser should have 4 reward 1");
+        }
+
+        // Reward 2: Distribution for rewardToken2 from epoch 1 to 3.
+        {
+            (address rToken2, uint256 rRate2, uint256 rStart2, uint256 rEnd2) = boringVault.rewards(2);
+            assertEq(rToken2, address(rewardToken2), "Reward 2 token mismatch");
+            assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
+            assertEq(rEnd2, 3, "Reward 2 endEpoch mismatch");
+            // Retrieve epoch data for epochs 1 and 2.
+            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+            ( , uint256 epoch3Start, uint256 epoch3End) = boringVault.epochs(3);
+            // Total duration for reward 2 is from epoch1.startTimestamp to epoch1.endTimestamp plus epoch2 duration plus epoch3 duration.
+            uint256 duration2 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start) + (epoch3End - epoch3Start);
+            uint256 totalReward2 = rRate2.mulWadDown(duration2);
+            assertApproxEqAbs(totalReward2, 10e18, 1e6, "Total distributed reward for reward 2 mismatch");
+
+            // Calculate the reward for each user.
+            uint256 userReward2 = totalReward2.divWadDown(3e18);
+
+            // Check that the reward has been distributed to the correct users.
+            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 2), userReward2, 1e12, "User should have 4 reward 2");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 2), userReward2, 1e12, "TestUser should have 4 reward 2");
+            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 2), userReward2, 1e12, "AnotherUser should have 4 reward 2");   
+        }
     }
 
     // function testFailDistributeRewardsStartEpochGreaterThanEndEpoch() external {
