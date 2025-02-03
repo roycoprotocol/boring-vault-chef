@@ -636,7 +636,14 @@ contract BoringVaultTest is Test {
     // /*//////////////////////////////////////////////////////////////
     //                         USER SHARE ACCOUNTING
     // //////////////////////////////////////////////////////////////*/
-    function testFindUserBalanceAtEpochNoDeposits() external {}
+    function testFindUserBalanceAtEpochNoDeposits() external {
+        // Create a new epoch
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        uint256 eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have no eligible balance");
+    }
     function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
     function testFindUserBalanceAtEpochExactMatch() external {}
     function testFindUserBalanceAtEpochMultipleUpdates() external {}
