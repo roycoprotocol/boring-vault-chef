@@ -9,9 +9,11 @@ import {AccountantWithRateProviders} from "src/base/Roles/AccountantWithRateProv
 import {RolesAuthority, Authority} from "@solmate/auth/authorities/RolesAuthority.sol";
 import {ERC20} from "lib/solmate/src/tokens/ERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {FixedPointMathLib} from "lib/solmate/src/utils/FixedPointMathLib.sol";
 
 contract BoringVaultTest is Test {
     using stdStorage for StdStorage;
+    using FixedPointMathLib for uint256;
 
     BoringVault public boringVault;
     BoringChef public boringChef;
@@ -24,6 +26,7 @@ contract BoringVaultTest is Test {
     uint8 public constant ADMIN_ROLE = 1;
     uint8 public constant MINTER_ROLE = 7;
     uint8 public constant BURNER_ROLE = 8;
+    uint8 public constant DEPOSITOR_ROLE = 9;
     // (other roles if needed…)
 
     // Test addresses
@@ -49,7 +52,7 @@ contract BoringVaultTest is Test {
         boringChef = new BoringChef(owner, "BoringChef", "BCHEF", 18);
 
         // Deploy the BoringVault.
-        // BoringVault’s constructor takes (address _shareToken, string memory _name, string memory _symbol, uint8 _decimals)
+        // BoringVault's constructor takes (address _shareToken, string memory _name, string memory _symbol, uint8 _decimals)
         boringVault = new BoringVault(address(this), "TestBoringVault", "TBV", 18);
 
         // Deploy a dummy accountant.
@@ -73,11 +76,11 @@ contract BoringVaultTest is Test {
 
         // Give the teller MINTER and BURNER roles.
         rolesAuthority.setUserRole(address(teller), MINTER_ROLE, true);
+        rolesAuthority.setUserRole(address(teller), BURNER_ROLE, true);
 
         // Set the authority for the vault and the teller.
         boringVault.setAuthority(rolesAuthority);
         teller.setAuthority(rolesAuthority);
-        rolesAuthority.setUserRole(address(teller), BURNER_ROLE, true);
 
         // (Optional) Update asset data on the teller so that the deposit token is allowed for deposits and withdrawals.
         teller.updateAssetData(ERC20(address(token)), true, true, 0);
@@ -217,7 +220,7 @@ contract BoringVaultTest is Test {
         assertEq(finalVaultBalance, depositAmount - withdrawShares, "Final vault share balance is incorrect");
 
         // Assuming address(this) started with 1,000e18 tokens:
-        // After depositing 100e18 tokens, address(this)’s token balance becomes 900e18.
+        // After depositing 100e18 tokens, address(this)'s token balance becomes 900e18.
         // After withdrawing 40e18 tokens (in asset value), their balance should be 900e18 + 40e18 = 940e18.
         uint256 finalTokenBalance = token.balanceOf(address(this));
         assertEq(finalTokenBalance, 940e18, "User token balance after partial withdrawal is incorrect");
@@ -273,7 +276,7 @@ contract BoringVaultTest is Test {
         assertEq(finalVaultBalance, depositAmount - withdrawShares, "Final vault share balance is incorrect");
 
         // Assuming address(this) started with 1,000e18 tokens:
-        // After depositing 100e18 tokens, address(this)’s token balance becomes 900e18.
+        // After depositing 100e18 tokens, address(this)'s token balance becomes 900e18.
         // After withdrawing 100e18 tokens (in asset value), their balance should be 900e18 + 100e18 = 1000e18.
         uint256 finalTokenBalance = token.balanceOf(address(this));
         assertEq(finalTokenBalance, 1000e18, "User token balance after partial withdrawal is incorrect");
@@ -381,21 +384,21 @@ contract BoringVaultTest is Test {
 
         // If no other actions occurred in the current epoch besides our deposit, 
         // fromEpochEligibleShares should now be (100 - 40) = 60.
-        // toEpochEligibleShares should be 40 if this is the user’s first time receiving shares
+        // toEpochEligibleShares should be 40 if this is the user's first time receiving shares
         // in the upcoming epoch.
         // However, note that if your deposit occurred just moments ago, 
-        // you may or may not have “rolled over” the epoch. 
+        // you may or may not have "rolled over" the epoch. 
         // Usually, deposit sets your shares into (currentEpoch + 1) anyway. 
         // If you want to confirm the effect, you can check those fields.
 
         // d) Check user balance update records:
         // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch 
         // and _increaseUpcomingEpochParticipation(to) for the next epoch, you should see a new 
-        // BalanceUpdate entry for each user’s array. 
+        // BalanceUpdate entry for each user's array. 
         // For address(this), a new entry in the currentEpoch with updated balance. 
         // For anotherUser, a new entry in nextEpoch with 40 shares.
 
-        // Check the last record in from-user’s balanceUpdates:
+        // Check the last record in from-user's balanceUpdates:
         uint256 fromUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
         (
             uint256 lastEpochFrom,
@@ -413,7 +416,7 @@ contract BoringVaultTest is Test {
             "From-user last recorded share balance mismatch."
         );
 
-        // Check the last record in to-user’s balanceUpdates:
+        // Check the last record in to-user's balanceUpdates:
         uint256 toUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
         (
             uint256 lastEpochTo,
@@ -500,7 +503,7 @@ contract BoringVaultTest is Test {
         
         // Read the current epoch data.
         (, , uint256 endTimestampBefore) = boringVault.epochs(initialEpoch);
-        // Before a rollover, the current epoch’s endTimestamp should be 0 (still open).
+        // Before a rollover, the current epoch's endTimestamp should be 0 (still open).
         assertEq(endTimestampBefore, 0, "Current epoch endTimestamp should be 0 before rollover");
         
         // --- (Optional) Check the user's balance update record for upcoming epoch.
@@ -534,8 +537,8 @@ contract BoringVaultTest is Test {
         assertApproxEqAbs(newEpochStart, block.timestamp, 2, "New epoch startTimestamp not set correctly");
         
         // The new epoch's eligibleShares should be rolled over from the previous epoch.
-        // According to _rollOverEpoch(), if the upcoming epoch’s eligibleShares is 0,
-        // it gets set to current epoch’s eligibleShares.
+        // According to _rollOverEpoch(), if the upcoming epoch's eligibleShares is 0,
+        // it gets set to current epoch's eligibleShares.
         (uint256 eligibleNew, , ) = boringVault.epochs(newEpoch);
         assertEq(eligibleNew, depositAmount, "New epoch eligibleShares should equal the previous epoch's eligible shares");
         
@@ -597,10 +600,137 @@ contract BoringVaultTest is Test {
         assertEq(lastRecordedBalance, boringVault.balanceOf(address(this)), "Latest recorded balance does not match vault balance");
     }
 
-    // /*//////////////////////////////////////////////////////////////
-    //                         REWARDS
-    // //////////////////////////////////////////////////////////////*/
-    // function testDistributeRewardsValidRange() external {}
+    /*//////////////////////////////////////////////////////////////
+                            REWARDS
+    //////////////////////////////////////////////////////////////*/
+    function testDistributeRewardsValidRange() external {
+        // Set our testUser and anotherUser to have roles so that they can deposit/withdraw.
+        // (These role settings are only necessary if the Teller contract enforces role restrictions on deposits.)
+        rolesAuthority.setUserRole(testUser, DEPOSITOR_ROLE, true);
+        rolesAuthority.setUserRole(anotherUser, DEPOSITOR_ROLE, true);
+        rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.deposit.selector, true);
+        rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.bulkWithdraw.selector, true);
+
+        // Deploy the reward tokens and mint them.
+        MockERC20 rewardToken1 = new MockERC20("Reward Token 1", "RT1", 18);
+        MockERC20 rewardToken2 = new MockERC20("Reward Token 2", "RT2", 18);
+        rewardToken1.mint(address(this), 100e18);
+        rewardToken2.mint(address(this), 100e18);
+
+        // Deposit 100 tokens from each address.
+        address[3] memory users = [address(this), testUser, anotherUser];
+        for (uint256 i = 0; i < users.length; i++) {
+            vm.startPrank(users[i]);
+            token.approve(address(boringVault), 100e18);
+            teller.deposit(ERC20(address(token)), 100e18, 0);
+            vm.stopPrank();
+        }
+
+        // For clarity, let the owner call further functions.
+        vm.startPrank(owner);
+
+        // Simulate time passing so that the current epoch(s) can be ended.
+        skip(10); // skip 10 seconds
+
+        // Roll over the epoch several times.
+        // (Here we roll over 5 times, skipping some extra seconds between rollovers.)
+        uint8[5] memory extraTime = [15, 30, 45, 60, 75];
+        for (uint256 i = 0; i < extraTime.length; i++) {
+            boringVault.rollOverEpoch();
+            skip(extraTime[i]); // skip additional seconds after each rollover
+        }
+        
+        // At this point, the currentEpoch has advanced enough that we can distribute rewards retroactively.
+        // Set up the reward distribution arrays.
+        // Reward 0: For deposit token reward across epochs 0 to 1.
+        // Reward 1: For rewardToken1 distributed from epoch 1 to 2.
+        // Reward 2: For rewardToken2 distributed from epoch 1 to 3.
+        address[] memory tokenArray = new address[](3);
+        tokenArray[0] = address(token);
+        tokenArray[1] = address(rewardToken1);
+        tokenArray[2] = address(rewardToken2);
+
+        uint256[] memory amountArray = new uint256[](3);
+        amountArray[0] = 60e18;
+        amountArray[1] = 12e18;
+        amountArray[2] = 10e18;
+
+        uint256[] memory startEpochArray = new uint256[](3);
+        startEpochArray[0] = 0;
+        startEpochArray[1] = 1;
+        startEpochArray[2] = 1;
+
+        uint256[] memory endEpochArray = new uint256[](3);
+        endEpochArray[0] = 1;
+        endEpochArray[1] = 2;
+        endEpochArray[2] = 3;
+
+        // Approve the reward tokens for the vault (boringSafe) to pull the tokens.
+        token.approve(address(boringVault), 60e18);
+        rewardToken1.approve(address(boringVault), 12e18);
+        rewardToken2.approve(address(boringVault), 10e18);
+
+        // Distribute the rewards.
+        boringVault.distributeRewards(
+            tokenArray,
+            amountArray,
+            startEpochArray,
+            endEpochArray
+        );
+
+        // --- Check that the rewards have been transferred to the safe ---
+        assertEq(token.balanceOf(address(boringVault.boringSafe())), 60e18, "Deposit token not correctly transferred to safe");
+        assertEq(rewardToken1.balanceOf(address(boringVault.boringSafe())), 12e18, "Reward token 1 not correctly transferred to safe");
+        assertEq(rewardToken2.balanceOf(address(boringVault.boringSafe())), 10e18, "Reward token 2 not correctly transferred to safe");
+
+        // --- Additional internal consistency checks on the rewards stored in the vault ---
+        // Ensure that maxRewardId is now 3.
+        assertEq(boringVault.maxRewardId(), 3, "maxRewardId should be 3 after reward distribution");
+
+        // For each reward, verify the stored parameters and that the computed total distribution matches the input amount.
+        // Reward 0: Distribution for token deposit from epoch 0 to 1.
+        // (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
+        // assertEq(rToken0, address(token), "Reward 0 token mismatch");
+        // assertEq(rStart0, 0, "Reward 0 startEpoch mismatch");
+        // assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
+        // // Retrieve epoch data for epochs 0 and 1.
+        // ( , uint256 epoch0Start, uint256 epoch0End) = boringVault.epochs(0);
+        // ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+        // // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
+        // uint256 duration0 = (epoch0End - epoch0Start) + (epoch1End - epoch1Start);
+        // uint256 totalReward0 = rRate0.mulWadDown(duration0);
+        // assertApproxEqAbs(totalReward0, 60e18, 1e12, "Total distributed reward for reward 0 mismatch");
+
+        // // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
+        // {
+        //     (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = (boringVault.rewards(1).token, boringVault.rewards(1).rewardRate, boringVault.rewards(1).startEpoch, boringVault.rewards(1).endEpoch);
+        //     assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
+        //     assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
+        //     assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
+        //     // Retrieve epoch data for epochs 1 and 2.
+        //     ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+        //     ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+        //     uint256 duration1 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start);
+        //     uint256 totalReward1 = rRate1.mulWadDown(duration1);
+        //     assertApproxEqAbs(totalReward1, 12e18, 1e12, "Total distributed reward for reward 1 mismatch");
+        // }
+
+        // // Reward 2: Distribution for rewardToken2 from epoch 1 to 3.
+        // {
+        //     (address rToken2, uint256 rRate2, uint256 rStart2, uint256 rEnd2) = (boringVault.rewards(2).token, boringVault.rewards(2).rewardRate, boringVault.rewards(2).startEpoch, boringVault.rewards(2).endEpoch);
+        //     assertEq(rToken2, address(rewardToken2), "Reward 2 token mismatch");
+        //     assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
+        //     assertEq(rEnd2, 3, "Reward 2 endEpoch mismatch");
+        //     // Retrieve epoch data for epochs 1, 2, and 3.
+        //     ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+        //     ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+        //     ( , uint256 epoch3Start, uint256 epoch3End) = boringVault.epochs(3);
+        //     uint256 duration2 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start) + (epoch3End - epoch3Start);
+        //     uint256 totalReward2 = rRate2.mulWadDown(duration2);
+        //     assertApproxEqAbs(totalReward2, 10e18, 1e12, "Total distributed reward for reward 2 mismatch");
+        // }
+    }
+
     // function testFailDistributeRewardsStartEpochGreaterThanEndEpoch() external {
     //     boringChef = BoringChef(address(0));
 
