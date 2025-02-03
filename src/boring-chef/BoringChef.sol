@@ -18,18 +18,13 @@ contract BoringChef is Auth, ERC20 {
 
     error ArrayLengthMismatch();
     error NoFutureEpochRewards();
-    error StartEpochMustBeBeforeEndEpoch();
-    error UserDoesNotHaveEnoughSharesToWithdraw();
     error InvalidRewardCampaignDuration();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
-    event UserSharesUpdated(address indexed user, uint256 epoch, uint256 newShares);
     event EpochStarted(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp);
-    event RewardDistributed(address indexed token, uint256 amount, uint256 startEpoch, uint256 endEpoch);
     event UserRewardsClaimed(address indexed user, uint256 rewardId, uint256 amount);
-
     event RewardsDistributed(
         address indexed token, uint256 indexed startEpoch, uint256 indexed endEpoch, uint256 amount
     );
@@ -43,9 +38,9 @@ contract BoringChef is Auth, ERC20 {
     /// @dev A record of a user's balance changing at a specific epoch
     struct BalanceUpdate {
         /// @dev The epoch in which the deposit was made
-        uint256 epoch;
+        uint128 epoch;
         /// @dev The total number of shares the user has at this epoch
-        uint256 totalSharesBalance;
+        uint128 totalSharesBalance;
     }
 
     /// @dev A record of an epoch
@@ -53,12 +48,12 @@ contract BoringChef is Auth, ERC20 {
         /// @dev The total number of shares eligible for rewards at this epoch
         /// This is not the total number of shares deposited, but the total number
         /// of shares that have been deposited and are eligible for rewards
-        uint256 eligibleShares;
+        uint128 eligibleShares;
         /// @dev The timestamp at which the epoch starts
-        uint256 startTimestamp;
+        uint64 startTimestamp;
         /// @dev The timestamp at which the epoch ends
         /// This is set to 0 if the epoch is not over
-        uint256 endTimestamp;
+        uint64 endTimestamp;
     }
 
     /// @dev A record of a reward
@@ -68,9 +63,9 @@ contract BoringChef is Auth, ERC20 {
         /// @dev The rate at which the reward token is distributed per second
         uint256 rewardRate;
         /// @dev The epoch at which the reward starts
-        uint256 startEpoch;
+        uint128 startEpoch;
         /// @dev The epoch at which the reward ends
-        uint256 endEpoch;
+        uint128 endEpoch;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -81,7 +76,7 @@ contract BoringChef is Auth, ERC20 {
     BoringSafe public immutable boringSafe;
 
     /// @dev The current epoch
-    uint256 public currentEpoch;
+    uint128 public currentEpoch;
 
     /// @dev A record of all epochs
     mapping(uint256 => Epoch) public epochs;
@@ -95,7 +90,7 @@ contract BoringChef is Auth, ERC20 {
 
     /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
-    /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardIds in that bucket (monotonically increasing) has been claimed.
+    /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardId in that bucket (monotonically increasing) has been claimed.
     mapping(address user => mapping(uint256 rewardBucket => uint256 claimedRewards)) public
         userToRewardBucketToClaimedRewards;
 
@@ -129,8 +124,8 @@ contract BoringChef is Auth, ERC20 {
     function distributeRewards(
         address[] calldata tokens,
         uint256[] calldata amounts,
-        uint256[] calldata startEpochs,
-        uint256[] calldata endEpochs
+        uint128[] calldata startEpochs,
+        uint128[] calldata endEpochs
     ) external requiresAuth {
         // Ensure that all arrays are the same length.
         if (tokens.length != amounts.length || tokens.length != startEpochs.length || tokens.length != endEpochs.length)
@@ -277,10 +272,10 @@ contract BoringChef is Auth, ERC20 {
         success = super.transfer(to, amount);
 
         // Account for withdrawal and forfeit incentives for current epoch for msg.sender
-        _decreaseCurrentEpochParticipation(msg.sender, amount);
+        _decreaseCurrentEpochParticipation(msg.sender, uint128(amount));
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
-        _increaseUpcomingEpochParticipation(to, amount);
+        _increaseUpcomingEpochParticipation(to, uint128(amount));
     }
 
     /// @notice Transfer shares from one user to another
@@ -295,10 +290,10 @@ contract BoringChef is Auth, ERC20 {
         success = super.transferFrom(from, to, amount);
 
         // Account for withdrawal and forfeit incentives for current epoch for "from"
-        _decreaseCurrentEpochParticipation(from, amount);
+        _decreaseCurrentEpochParticipation(from, uint128(amount));
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards for "to"
-        _increaseUpcomingEpochParticipation(to, amount);
+        _increaseUpcomingEpochParticipation(to, uint128(amount));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -307,37 +302,37 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Mint shares
     /// @dev This function is overridden from the ERC20 implementation to account for incentives.
-    function _mint(address to, uint256 amount) internal override {
+    function _mint(address to, uint256 amount) internal override(ERC20) {
         // Mint the shares to the depositor
         super._mint(to, amount);
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards
-        _increaseUpcomingEpochParticipation(to, amount);
+        _increaseUpcomingEpochParticipation(to, uint128(amount));
     }
 
     /// @notice Burn shares
     /// @dev This function is overridden from the ERC20 implementation to account for incentives.
-    function _burn(address from, uint256 amount) internal override {
+    function _burn(address from, uint256 amount) internal override(ERC20) {
         // Burn the shares from the depositor
         super._burn(from, amount);
 
         // Account for withdrawal and forfeit incentives for current epoch
-        _decreaseCurrentEpochParticipation(from, amount);
+        _decreaseCurrentEpochParticipation(from, uint128(amount));
     }
 
     /// @dev Roll over to the next epoch.
     /// @dev Should be called on every boring vault rebalance.
     function _rollOverEpoch() internal {
         // Cache currentEpoch for gas savings
-        uint256 ongoingEpoch = currentEpoch;
+        uint128 ongoingEpoch = currentEpoch;
 
         // Get the current and next epoch data.
         Epoch storage currentEpochData = epochs[ongoingEpoch];
         Epoch storage upcomingEpochData = epochs[++ongoingEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
-        currentEpochData.endTimestamp = block.timestamp;
-        upcomingEpochData.startTimestamp = block.timestamp;
+        currentEpochData.endTimestamp = uint64(block.timestamp);
+        upcomingEpochData.startTimestamp = uint64(block.timestamp);
 
         // Update the eligible shares for the next epoch if necessary by rolling them over.
         if (upcomingEpochData.eligibleShares == 0) {
@@ -349,10 +344,10 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /// @notice Increase the user's share balance for the next epoch
-    function _increaseUpcomingEpochParticipation(address user, uint256 amount) internal {
+    function _increaseUpcomingEpochParticipation(address user, uint128 amount) internal {
         // Cache currentEpoch for gas savings
-        uint256 ongoingEpoch = currentEpoch;
-        uint256 upcomingEpoch = ongoingEpoch + 1;
+        uint128 ongoingEpoch = currentEpoch;
+        uint128 upcomingEpoch = ongoingEpoch + 1;
 
         // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
         Epoch storage currentEpochData = epochs[ongoingEpoch];
@@ -373,9 +368,9 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /// @notice Decrease the user's share balance for the current epoch
-    function _decreaseCurrentEpochParticipation(address user, uint256 amount) internal {
+    function _decreaseCurrentEpochParticipation(address user, uint128 amount) internal {
         // Cache currentEpoch for gas savings
-        uint256 ongoingEpoch = currentEpoch;
+        uint128 ongoingEpoch = currentEpoch;
 
         // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
         Epoch storage currentEpochData = epochs[ongoingEpoch];
@@ -391,18 +386,18 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /// @notice Update the user's share balance for a given epoch
-    function _updateUserShareAccounting(address user, uint256 epoch) internal {
+    function _updateUserShareAccounting(address user, uint128 epoch) internal {
         // Get the balance update data for the user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
         BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
 
         // Ensure no duplicate entries
         if (lastBalanceUpdate.epoch == epoch) {
-            lastBalanceUpdate.totalSharesBalance = balanceOf[user];
+            lastBalanceUpdate.totalSharesBalance = uint128(balanceOf[user]);
 
             // If the last balance update is not for the current epoch, add a new balance update
         } else {
-            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: balanceOf[user]}));
+            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
         }
     }
 
