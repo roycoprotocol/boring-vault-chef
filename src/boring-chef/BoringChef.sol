@@ -311,6 +311,45 @@ contract BoringChef is Auth, ERC20 {
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Get a user's reward balance for a given reward ID.
+    /// @param user The user to get the reward balance for.
+    /// @param rewardId The ID of the reward to get the balance for.
+    function getUserRewardBalance(address user, uint256 rewardId) external view returns (uint256) {
+        // Fetch all balance change updates for the caller.
+        BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[user];
+
+        // Retrieve the reward ID, start epoch, and end epoch.
+        Reward storage reward = rewards[rewardId];
+
+        // Initialize a local accumulator for the total reward owed.
+        uint256 rewardsOwed = 0;
+
+        // We want to iterate over the epoch range [startEpoch..endEpoch],
+        // summing up the user's share of tokens from each epoch.
+        for (uint256 epoch = reward.startEpoch; epoch <= reward.endEpoch; epoch++) {
+            // Determine the user's share balance during this epoch.
+            uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
+
+            // If the user is owed rewards for this epoch, remit them
+            if (userBalanceAtEpoch > 0) {
+                Epoch storage epochData = epochs[epoch];
+                // Compute user fraction = userBalance / totalShares.
+                uint256 userFraction = userBalanceAtEpoch.divWadDown(epochData.eligibleShares);
+
+                // Figure out how many tokens were distributed in this epoch
+                // for the specified reward ID:
+                uint256 epochDuration = epochData.endTimestamp - epochData.startTimestamp;
+                uint256 epochReward = reward.rewardRate.mulWadDown(epochDuration);
+
+                // Multiply epochReward * fraction = userRewardThisEpoch.
+                // Add that to rewardsOwed.
+                rewardsOwed += epochReward.mulWadDown(userFraction);
+            }
+        }
+
+        return rewardsOwed;
+    }
+
     /// @notice Get the user's current eligible balance.
     /// @dev Returns the user's eligible balance for the current epoch, not the upcoming epoch
     function getUserEligibleBalance(address user) external view returns (uint256) {
