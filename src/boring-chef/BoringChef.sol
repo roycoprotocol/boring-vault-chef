@@ -454,7 +454,7 @@ contract BoringChef is Auth, ERC20 {
 
         // If there are no balance updates, create a new one
         if (userBalanceUpdates.length == 0) {
-            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: balanceOf[user]}));
+            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
         }
     
         // Get the last balance update
