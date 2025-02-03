@@ -761,22 +761,131 @@ contract BoringVaultTest is Test {
         }
     }
 
-    // function testFailDistributeRewardsStartEpochGreaterThanEndEpoch() external {
-    //     boringChef = BoringChef(address(0));
+    function testFailRewardsStartEpochGreaterThanEndEpoch() external {
+        boringVault.rollOverEpoch();
+        boringVault.rollOverEpoch();
+        boringVault.rollOverEpoch();
 
-    //     revert("test");
-    // }
-    // function testFailDistributeRewardsEndEpochInFuture() external {
-    //     boringChef = BoringChef(address(0));
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
 
-    //     revert("test");
-    // }
-    // function testFailDistributeRewardsInsufficientTokenBalance() external {
-    //     boringChef = BoringChef(address(0));
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
 
-    //     revert("test");
-    // }
-    // function testSingleEpochRewardDistribution() external {}
+        uint256[] memory startEpochArray = new uint256[](1);
+        startEpochArray[0] = 2;
+
+        uint256[] memory endEpochArray = new uint256[](1);
+        endEpochArray[0] = 0;
+
+        boringVault.distributeRewards(
+            tokenArray,
+            amountArray,
+            startEpochArray,
+            endEpochArray
+        );
+    }
+
+    function testFailDistributeRewardsEndEpochInFuture() external {
+        boringVault.rollOverEpoch();
+
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
+
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
+
+        uint256[] memory startEpochArray = new uint256[](1);
+        startEpochArray[0] = 0;
+
+        uint256[] memory endEpochArray = new uint256[](1);
+        endEpochArray[0] = 2;
+
+        boringVault.distributeRewards(
+            tokenArray,
+            amountArray,
+            startEpochArray,
+            endEpochArray
+        );
+    }
+
+    function testSingleEpochRewardDistribution() external {
+        // Deploy the reward token and mint it.
+        MockERC20 rewardToken1 = new MockERC20("Reward Token 1", "RT1", 18);
+        rewardToken1.mint(address(this), 100e18);
+
+        // Deposit 100 tokens.
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // Roll over the epoch.
+        boringVault.rollOverEpoch();
+
+        // Simulate time passing so that the current epoch(s) can be ended.
+        skip(10); // skip 10 seconds
+
+        // Roll over the epoch again.
+        boringVault.rollOverEpoch();
+        
+        // At this point, the currentEpoch has advanced enough that we can distribute rewards retroactively.
+        // Set up the reward distribution arrays.
+        // Reward 0: For deposit token reward across epochs 0 to 1.
+        // Reward 1: For rewardToken1 distributed from epoch 1 to 2.
+        // Reward 2: For rewardToken2 distributed from epoch 1 to 3.
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(rewardToken1);
+
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
+
+        uint256[] memory startEpochArray = new uint256[](1);
+        startEpochArray[0] = 1;
+
+        uint256[] memory endEpochArray = new uint256[](1);
+        endEpochArray[0] = 1;
+
+        // Approve the reward tokens for the vault (boringSafe) to pull the tokens.
+        rewardToken1.approve(address(boringVault), 100e18);
+
+        // Distribute the rewards.
+        boringVault.distributeRewards(
+            tokenArray,
+            amountArray,
+            startEpochArray,
+            endEpochArray
+        );
+
+        // --- Check that the rewards have been transferred to the safe ---
+        assertEq(rewardToken1.balanceOf(address(boringVault.boringSafe())), 100e18, "Reward token 1 not correctly transferred to safe");
+
+        // --- Additional internal consistency checks on the rewards stored in the vault ---
+        // Ensure that maxRewardId is now 3.
+        assertEq(boringVault.maxRewardId(), 1, "maxRewardId should be 1 after reward distribution");
+
+        // For each reward, verify the stored parameters and that the computed total distribution matches the input amount.
+        // Reward 0: Distribution for token deposit from epoch 1.
+        {
+            (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
+            assertEq(rToken0, address(rewardToken1), "Reward 0 token mismatch");
+            assertEq(rStart0, 1, "Reward 0 startEpoch mismatch");
+            assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
+            // Retrieve epoch data for epochs 1.
+            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+
+            // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
+            uint256 duration0 = (epoch1End - epoch1Start);
+            uint256 totalReward0 = rRate0.mulWadDown(duration0);
+            assertApproxEqAbs(totalReward0, 100e18, 1e6, "Total distributed reward for reward 0 mismatch");
+
+            // Since our user's had no eligible shares at epoch 0, we need to calculate exactly how many rewards they are owed.
+            uint256 userReward0 = (rRate0.mulWadDown(duration0));
+
+            // Check that the reward has been distributed to the correct users.
+            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 100 reward 0");
+        }
+    }
+
+    function testComplexRewardDistribution() external {}
 
     // /*//////////////////////////////////////////////////////////////
     //                         CLAIMS
