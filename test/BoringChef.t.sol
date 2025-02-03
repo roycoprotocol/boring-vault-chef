@@ -655,12 +655,12 @@ contract BoringVaultTest is Test {
         amountArray[1] = 12e18;
         amountArray[2] = 10e18;
 
-        uint256[] memory startEpochArray = new uint256[](3);
+        uint128[] memory startEpochArray = new uint128[](3);
         startEpochArray[0] = 0;
         startEpochArray[1] = 1;
         startEpochArray[2] = 1;
 
-        uint256[] memory endEpochArray = new uint256[](3);
+        uint128[] memory endEpochArray = new uint128[](3);
         endEpochArray[0] = 1;
         endEpochArray[1] = 2;
         endEpochArray[2] = 3;
@@ -772,10 +772,10 @@ contract BoringVaultTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint256[] memory startEpochArray = new uint256[](1);
+        uint128[] memory startEpochArray = new uint128[](1);
         startEpochArray[0] = 2;
 
-        uint256[] memory endEpochArray = new uint256[](1);
+        uint128[] memory endEpochArray = new uint128[](1);
         endEpochArray[0] = 0;
 
         boringVault.distributeRewards(
@@ -795,10 +795,10 @@ contract BoringVaultTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint256[] memory startEpochArray = new uint256[](1);
+        uint128[] memory startEpochArray = new uint128[](1);
         startEpochArray[0] = 0;
 
-        uint256[] memory endEpochArray = new uint256[](1);
+        uint128[] memory endEpochArray = new uint128[](1);
         endEpochArray[0] = 2;
 
         boringVault.distributeRewards(
@@ -838,10 +838,10 @@ contract BoringVaultTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint256[] memory startEpochArray = new uint256[](1);
+        uint128[] memory startEpochArray = new uint128[](1);
         startEpochArray[0] = 1;
 
-        uint256[] memory endEpochArray = new uint256[](1);
+        uint128[] memory endEpochArray = new uint128[](1);
         endEpochArray[0] = 1;
 
         // Approve the reward tokens for the vault (boringSafe) to pull the tokens.
@@ -961,13 +961,13 @@ contract BoringVaultTest is Test {
         amountArray[2] = 30e18;
         amountArray[3] = 10e18;
 
-        uint256[] memory startEpochArray = new uint256[](4);
+        uint128[] memory startEpochArray = new uint128[](4);
         startEpochArray[0] = 1;
         startEpochArray[1] = 2;
         startEpochArray[2] = 1;
         startEpochArray[3] = 3;
 
-        uint256[] memory endEpochArray = new uint256[](4);
+        uint128[] memory endEpochArray = new uint128[](4);
         endEpochArray[0] = 3;
         endEpochArray[1] = 4;
         endEpochArray[2] = 4;
