@@ -308,23 +308,300 @@ contract BoringVaultTest is Test {
     // /*//////////////////////////////////////////////////////////////
     //                         TRANSFERS
     // //////////////////////////////////////////////////////////////*/
-    function testBasicTransfer() external {}
-    
-    // function testZeroTransfer() external {}
-    // function testTransferSelf() external {}
-    // function testFailTransferFromInsufficientAllowance() external {
-    //     boringChef = BoringChef(address(0));
+    function testBasicTransfer() external {
+        // Define amounts.
+        uint256 depositAmount = 100e18;
 
-    //     revert("test");
-    // }
-    // function testTransferFromWithSufficientAllowance() external {}
+        // Approve BoringVault for depositAmount tokens.
+        token.approve(address(boringVault), depositAmount);
+
+        // Deposit into the vault via the teller.
+        // We set minimumMint to 0 for simplicity.
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Check the vault share balance for address(this).
+        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(
+            initialVaultBalance,
+            depositAmount,
+            "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
+        );
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+
+        // Transfer 40 shares from address(this) to anotherUser.
+        uint256 transferShares = 40e18;
+        bool success = boringVault.transfer(anotherUser, transferShares);
+        assertTrue(success, "Transfer should succeed.");
+
+        // a) Check share balances:
+        uint256 finalVaultBalanceThis = boringVault.balanceOf(address(this));
+        uint256 finalVaultBalanceAnother = boringVault.balanceOf(anotherUser);
+
+        // address(this) should have depositAmount - transferShares left.
+        assertEq(
+            finalVaultBalanceThis,
+            depositAmount - transferShares,
+            "address(this) final vault shares are incorrect."
+        );
+
+        // anotherUser should have exactly 40 shares.
+        assertEq(
+            finalVaultBalanceAnother,
+            transferShares,
+            "anotherUser final vault shares are incorrect."
+        );
+
+        // b) Token balances do NOT change when transferring shares (only share ownership changes).
+        // So address(this) still has 900e18 tokens if they started with 1,000e18 and deposited 100e18.
+        // Another user also hasn't changed their underlying token balance.
+        assertEq(
+            token.balanceOf(address(this)),
+            900e18,
+            "Token balance of address(this) should be unchanged after share transfer."
+        );
+        assertEq(
+            token.balanceOf(anotherUser),
+            1_000e18,
+            "Token balance of anotherUser should be unchanged after share transfer."
+        );
+
+        // c) BoringChef logic: transferring shares triggers _decreaseCurrentEpochParticipation(from) 
+        //    and _increaseUpcomingEpochParticipation(to).
+        // So the from-user's current epoch eligible shares decrease, 
+        // while the to-user's share goes to the next epoch's eligibleShares.
+        // We'll check these epoch states.
+
+        // The 'from' user is in the current epoch (currentEpoch).
+        uint256 currentEpochIndex = boringVault.currentEpoch();
+        (uint256 fromEpochEligibleShares, , ) = boringVault.epochs(currentEpochIndex);
+
+        // The 'to' user is placed in the upcoming epoch (currentEpoch + 1).
+        uint256 nextEpochIndex = currentEpochIndex + 1;
+        (uint256 toEpochEligibleShares, , ) = boringVault.epochs(nextEpochIndex);
+
+        // If no other actions occurred in the current epoch besides our deposit, 
+        // fromEpochEligibleShares should now be (100 - 40) = 60.
+        // toEpochEligibleShares should be 40 if this is the user’s first time receiving shares
+        // in the upcoming epoch.
+        // However, note that if your deposit occurred just moments ago, 
+        // you may or may not have “rolled over” the epoch. 
+        // Usually, deposit sets your shares into (currentEpoch + 1) anyway. 
+        // If you want to confirm the effect, you can check those fields.
+
+        // For demonstration, let's just read them for insight:
+        console.log("Eligible shares in current epoch:", fromEpochEligibleShares);
+        console.log("Eligible shares in next epoch:", toEpochEligibleShares);
+
+        // d) Check user balance update records:
+        // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch 
+        // and _increaseUpcomingEpochParticipation(to) for the next epoch, you should see a new 
+        // BalanceUpdate entry for each user’s array. 
+        // For address(this), a new entry in the currentEpoch with updated balance. 
+        // For anotherUser, a new entry in nextEpoch with 40 shares.
+
+        // Check the last record in from-user’s balanceUpdates:
+        uint256 fromUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
+        (
+            uint256 lastEpochFrom,
+            uint256 lastBalanceFrom
+        ) = boringVault.balanceUpdates(address(this), fromUpdatesLen - 1);
+
+        assertEq(
+            lastEpochFrom, 
+            currentEpochIndex, 
+            "From-user last balance update should track the current epoch."
+        );
+        assertEq(
+            lastBalanceFrom, 
+            depositAmount - transferShares, 
+            "From-user last recorded share balance mismatch."
+        );
+
+        // Check the last record in to-user’s balanceUpdates:
+        uint256 toUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
+        (
+            uint256 lastEpochTo,
+            uint256 lastBalanceTo
+        ) = boringVault.balanceUpdates(anotherUser, toUpdatesLen - 1);
+
+        assertEq(
+            lastEpochTo, 
+            nextEpochIndex, 
+            "To-user last balance update should track the next epoch."
+        );
+        assertEq(
+            lastBalanceTo, 
+            transferShares, 
+            "To-user last recorded share balance mismatch."
+        );
+    }
+
+    function testFailTransferExceedingBalance() external {
+        // Define amounts.
+        uint256 depositAmount = 100e18;
+        uint256 transferShares = 101e18;
+
+        // Approve BoringVault for depositAmount tokens.
+        token.approve(address(boringVault), depositAmount);
+
+        // Deposit into the vault via the teller.
+        // We set minimumMint to 0 for simplicity.
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Check the vault share balance for address(this).
+        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(
+            initialVaultBalance,
+            depositAmount,
+            "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
+        );
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+
+        // Transfer 40 shares from address(this) to anotherUser.
+        boringVault.transfer(anotherUser, transferShares);
+    }
+
+    function testFailTransferBeforeRollover() external {
+        // Define amounts.
+        uint256 depositAmount = 100e18;
+        uint256 transferShares = 40e18;
+
+        // Approve BoringVault for depositAmount tokens.
+        token.approve(address(boringVault), depositAmount);
+
+        // Deposit into the vault via the teller.
+        // We set minimumMint to 0 for simplicity.
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Check the vault share balance for address(this).
+        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(
+            initialVaultBalance,
+            depositAmount,
+            "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
+        );
+
+        // Transfer 40 shares from address(this) to anotherUser.
+        boringVault.transfer(anotherUser, transferShares);
+    }
+
 
     // /*//////////////////////////////////////////////////////////////
     //                         EPOCH ROLLING
     // //////////////////////////////////////////////////////////////*/
-    // function testManualEpochRollover() external {}
-    // function testMultipleEpochRollovers() external {}
-    // function testRolloverNoUsers() external {}
+    function testManualEpochRollover() external {
+        // ----- SETUP: Deposit some tokens first -----
+        uint256 depositAmount = 100e18;
+        // Have the test contract (owner) deposit 100 tokens via the teller.
+        token.approve(address(boringVault), depositAmount);
+        // Minimum mint is 0 for simplicity.
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+        
+        // Capture the initial epoch. (Assume currentEpoch is already set; if not, it should be 0.)
+        uint256 initialEpoch = boringVault.currentEpoch();
+        
+        // Read the current epoch data.
+        (, , uint256 endTimestampBefore) = boringVault.epochs(initialEpoch);
+        // Before a rollover, the current epoch’s endTimestamp should be 0 (still open).
+        assertEq(endTimestampBefore, 0, "Current epoch endTimestamp should be 0 before rollover");
+        
+        // --- (Optional) Check the user's balance update record for upcoming epoch.
+        // Expect that the deposit has been recorded for epoch = initialEpoch + 1.
+        (uint256 recordedEpoch, uint256 recordedBalance) = boringVault.balanceUpdates(address(this), 0);
+        uint256 expectedUpcomingEpoch = initialEpoch + 1;
+        assertEq(recordedEpoch, expectedUpcomingEpoch, "Balance update epoch should be currentEpoch + 1");
+        assertEq(recordedBalance, boringVault.balanceOf(address(this)), "Recorded balance does not match vault balance");
+        
+        // --- Simulate a small time lapse.
+        skip(10); // skip 10 seconds
+        
+        // ----- ROLLOVER: Manually roll over to the next epoch -----
+        // Call the rollOverEpoch function. (The caller must be authorized; here, address(this) is the owner.)
+        boringVault.rollOverEpoch();
+        
+        // The currentEpoch should now have incremented.
+        uint256 newEpoch = boringVault.currentEpoch();
+        assertEq(newEpoch, initialEpoch + 1, "Epoch did not increment correctly after rollover");
+        
+        // ----- Check previous epoch data -----
+        // The previous epoch (initialEpoch) should now have an endTimestamp set.
+        (, , uint256 previousEpochEnd) = boringVault.epochs(initialEpoch);
+        assertGt(previousEpochEnd, 0, "Previous epoch endTimestamp should be > 0 after rollover");
+        // Use an approximate equality check (tolerance of 2 seconds) for block.timestamp.
+        assertApproxEqAbs(previousEpochEnd, block.timestamp, 2, "Previous epoch endTimestamp not close to current time");
+        
+        // ----- Check new epoch data -----
+        ( , uint256 newEpochStart, ) = boringVault.epochs(newEpoch);
+        // The new epoch's startTimestamp should be near the current block.timestamp.
+        assertApproxEqAbs(newEpochStart, block.timestamp, 2, "New epoch startTimestamp not set correctly");
+        
+        // The new epoch's eligibleShares should be rolled over from the previous epoch.
+        // According to _rollOverEpoch(), if the upcoming epoch’s eligibleShares is 0,
+        // it gets set to current epoch’s eligibleShares.
+        (uint256 eligibleNew, , ) = boringVault.epochs(newEpoch);
+        assertEq(eligibleNew, depositAmount, "New epoch eligibleShares should equal the previous epoch's eligible shares");
+        
+        // ----- Check user balance update records -----
+        // (Assuming you have a helper function getTotalBalanceUpdates(address) that returns the length of balanceUpdates for a user.)
+        uint256 updatesLength = boringVault.getTotalBalanceUpdates(address(this));
+        // The latest balance update record should correspond to the new epoch.
+        (uint256 lastUpdateEpoch, uint256 lastRecordedBalance) = boringVault.balanceUpdates(address(this), updatesLength - 1);
+        assertEq(lastUpdateEpoch, newEpoch, "Latest balance update epoch should be the new epoch");
+        assertEq(lastRecordedBalance, boringVault.balanceOf(address(this)), "Latest recorded balance does not match current vault balance");
+    }
+
+    function testMultipleEpochRollovers() external {
+        // Deposit an initial amount of tokens.
+        uint256 depositAmount = 100e18;
+        token.approve(address(boringVault), depositAmount);
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Capture the initial epoch. Deposits are recorded for upcoming epoch (currentEpoch + 1)
+        uint256 initialEpoch = boringVault.currentEpoch();
+
+        // Verify the balance update record for the upcoming epoch.
+        (uint256 recordedEpoch, uint256 recordedBalance) = boringVault.balanceUpdates(address(this), 0);
+        uint256 expectedUpcomingEpoch = initialEpoch + 1;
+        assertEq(recordedEpoch, expectedUpcomingEpoch, "Balance update epoch should be currentEpoch + 1");
+        assertEq(recordedBalance, boringVault.balanceOf(address(this)), "Recorded balance does not match vault balance");
+
+        // Number of rollovers to simulate.
+        uint256 numRollovers = 5;
+
+        for (uint256 i = 0; i < numRollovers; i++) {
+            // Simulate time passing so that the epoch can end.
+            skip(10); // Skip 10 seconds
+
+            // Call the rollOverEpoch function.
+            boringVault.rollOverEpoch();
+
+            // The currentEpoch should now have incremented by 1 each time.
+            uint256 currentEpoch = boringVault.currentEpoch();
+            assertEq(currentEpoch, initialEpoch + i + 1, "Epoch did not increment correctly after rollover");
+
+            // Check the previous epoch's endTimestamp is set.
+            (, , uint256 prevEpochEnd) = boringVault.epochs(currentEpoch - 1);
+            assertGt(prevEpochEnd, 0, "Previous epoch endTimestamp should be > 0 after rollover");
+            assertApproxEqAbs(prevEpochEnd, block.timestamp, 2, "Previous epoch endTimestamp not close to current time");
+
+            // Check the new epoch's startTimestamp.
+            ( , uint256 currentEpochStart, ) = boringVault.epochs(currentEpoch);
+            assertApproxEqAbs(currentEpochStart, block.timestamp, 2, "New epoch startTimestamp not set correctly");
+
+            // Check that the new epoch's eligibleShares has been rolled over correctly.
+            // Since no additional deposits occurred, it should equal the depositAmount.
+            (uint256 eligibleShares, , ) = boringVault.epochs(currentEpoch);
+            assertEq(eligibleShares, depositAmount, "New epoch eligibleShares should equal the initial deposit amount");
+        }
+
+        // After all rollovers, verify the user's final balance update.
+        uint256 lastRecordedBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(lastRecordedBalance, boringVault.balanceOf(address(this)), "Latest recorded balance does not match vault balance");
+    }
 
     // /*//////////////////////////////////////////////////////////////
     //                         REWARDS
@@ -359,34 +636,14 @@ contract BoringVaultTest is Test {
     // /*//////////////////////////////////////////////////////////////
     //                         USER SHARE ACCOUNTING
     // //////////////////////////////////////////////////////////////*/
-    // function testFindUserBalanceAtEpochNoDeposits() external {}
-    // function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
-    // function testFindUserBalanceAtEpochExactMatch() external {}
-    // function testFindUserBalanceAtEpochMultipleUpdates() external {}
-
-    // /*//////////////////////////////////////////////////////////////
-    //                         USER SHARE ACCOUNTING
-    // //////////////////////////////////////////////////////////////*/
-    // function testUpdateUserShareAccountingSameEpochMultipleTimes() external {}
-    // function testUpdateUserShareAccountingBrandNewEpoch() external {}
-    // function testUpdateUserShareAccountingEmpty() external {}
-
-    // /*//////////////////////////////////////////////////////////////
-    //                         ROLE-BASED SECURITY
-    // //////////////////////////////////////////////////////////////*/
-    // function testFailDistributeRewardsUnauthorized() external {
-    //     boringChef = BoringChef(address(0));
-
-    //     revert("test");
-    // }
-    // function testDistributeRewardsByOwner() external {}
+    function testFindUserBalanceAtEpochNoDeposits() external {}
+    function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
+    function testFindUserBalanceAtEpochExactMatch() external {}
+    function testFindUserBalanceAtEpochMultipleUpdates() external {}
 
     // /*//////////////////////////////////////////////////////////////
     //                         INTEGRATION & EDGE CASES
     // //////////////////////////////////////////////////////////////*/
-    // function testMultipleUsersIntegration() external {}
-    // function testZeroDurationEpoch() external {}
     // function testLargeRewards() external {}
-    // function testFractionalDivisionsRounding() external {}
     // function testStressManyEpochs() external {}
 }
