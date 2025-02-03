@@ -689,26 +689,27 @@ contract BoringVaultTest is Test {
 
         // For each reward, verify the stored parameters and that the computed total distribution matches the input amount.
         // Reward 0: Distribution for token deposit from epoch 0 to 1.
-        // (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
-        // assertEq(rToken0, address(token), "Reward 0 token mismatch");
-        // assertEq(rStart0, 0, "Reward 0 startEpoch mismatch");
-        // assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
-        // // Retrieve epoch data for epochs 0 and 1.
-        // ( , uint256 epoch0Start, uint256 epoch0End) = boringVault.epochs(0);
-        // ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
-        // // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
-        // uint256 duration0 = (epoch0End - epoch0Start) + (epoch1End - epoch1Start);
-        // uint256 totalReward0 = rRate0.mulWadDown(duration0);
-        // assertApproxEqAbs(totalReward0, 60e18, 1e12, "Total distributed reward for reward 0 mismatch");
-
+        {
+            (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
+            assertEq(rToken0, address(token), "Reward 0 token mismatch");
+            assertEq(rStart0, 0, "Reward 0 startEpoch mismatch");
+            assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
+            // Retrieve epoch data for epochs 0 and 1.
+            ( , uint256 epoch0Start, uint256 epoch0End) = boringVault.epochs(0);
+            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
+            uint256 duration0 = (epoch0End - epoch0Start) + (epoch1End - epoch1Start);
+            uint256 totalReward0 = rRate0.mulWadDown(duration0);
+            assertApproxEqAbs(totalReward0, 60e18, 1e12, "Total distributed reward for reward 0 mismatch");
+        }
         // // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
         // {
-        //     (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = (boringVault.rewards(1).token, boringVault.rewards(1).rewardRate, boringVault.rewards(1).startEpoch, boringVault.rewards(1).endEpoch);
+        //     (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = boringVault.rewards(1);
         //     assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
         //     assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
         //     assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
         //     // Retrieve epoch data for epochs 1 and 2.
-        //     ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+        //     ( , epoch1Start, epoch1End) = boringVault.epochs(1);
         //     ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
         //     uint256 duration1 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start);
         //     uint256 totalReward1 = rRate1.mulWadDown(duration1);
