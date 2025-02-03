@@ -312,17 +312,10 @@ contract BoringChef is Auth, ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the user's current eligible balance.
+    /// @dev Returns the user's eligible balance for the current epoch, not the upcoming epoch
     function getUserEligibleBalance(address user) external view returns (uint256) {
-        // Get the length of the balance updates array
-        uint256 updatesLength = getTotalBalanceUpdates(user);
-
-        // If there are no balance updates, return 0
-        if (updatesLength == 0) {
-            return 0;
-        }
-
-        // Return the last balance update
-        return balanceUpdates[user][updatesLength - 1].totalSharesBalance;
+        // Find the user's balance at the current epoch
+        return _findUserBalanceAtEpoch(currentEpoch, balanceUpdates[user]);
     }
 
     /// @notice Get the array of balance updates for a user.
@@ -443,7 +436,7 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
-    /// @notice Find the user’s share balance at a specific epoch via binary search.
+    /// @notice Find the user's share balance at a specific epoch via binary search.
     /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.
     /// @param epoch The epoch for which we want the user's balance.
     /// @param balanceChanges The historical balance updates for a user, sorted ascending by epoch.
