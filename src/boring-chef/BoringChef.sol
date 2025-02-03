@@ -308,6 +308,30 @@ contract BoringChef is Auth, ERC20 {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Get the user's current eligible balance.
+    function getUserEligibleBalance(address user) external view returns (uint256) {
+        // Get the length of the balance updates array
+        uint256 updatesLength = getTotalBalanceUpdates(user);
+
+        // If there are no balance updates, return 0
+        if (updatesLength == 0) {
+            return 0;
+        }
+
+        // Return the last balance update
+        return balanceUpdates[user][updatesLength - 1].totalSharesBalance;
+    }
+
+    /// @notice Get the array of balance updates for a user.
+    /// @param user The user to get the balance updates for.
+    function getTotalBalanceUpdates(address user) public view returns (uint256) {
+        return balanceUpdates[user].length;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
