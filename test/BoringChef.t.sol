@@ -375,11 +375,9 @@ contract BoringVaultTest is Test {
 
         // The 'from' user is in the current epoch (currentEpoch).
         uint256 currentEpochIndex = boringVault.currentEpoch();
-        (uint256 fromEpochEligibleShares, , ) = boringVault.epochs(currentEpochIndex);
 
         // The 'to' user is placed in the upcoming epoch (currentEpoch + 1).
         uint256 nextEpochIndex = currentEpochIndex + 1;
-        (uint256 toEpochEligibleShares, , ) = boringVault.epochs(nextEpochIndex);
 
         // If no other actions occurred in the current epoch besides our deposit, 
         // fromEpochEligibleShares should now be (100 - 40) = 60.
@@ -389,10 +387,6 @@ contract BoringVaultTest is Test {
         // you may or may not have “rolled over” the epoch. 
         // Usually, deposit sets your shares into (currentEpoch + 1) anyway. 
         // If you want to confirm the effect, you can check those fields.
-
-        // For demonstration, let's just read them for insight:
-        console.log("Eligible shares in current epoch:", fromEpochEligibleShares);
-        console.log("Eligible shares in next epoch:", toEpochEligibleShares);
 
         // d) Check user balance update records:
         // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch 
@@ -644,9 +638,138 @@ contract BoringVaultTest is Test {
         uint256 eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 0, "User should have no eligible balance");
     }
-    function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
-    function testFindUserBalanceAtEpochExactMatch() external {}
-    function testFindUserBalanceAtEpochMultipleUpdates() external {}
+
+    function testFindUserBalanceAtEpochAllUpdatesAfter() external {
+        // Create a new epoch
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        uint256 eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have no eligible balance");
+
+        // Deposit 100 tokens
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have no eligible balance");
+
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
+        
+    }
+
+    function testFindUserBalanceAtEpochExactMatch() external {
+        // Create a new epoch
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        uint256 eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have no eligible balance");
+
+        // Deposit 100 tokens
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have 0 eligible balance");
+
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
+        
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
+    }
+    function testFindUserBalanceAtEpochMultipleUpdates() external {
+        // Create a new epoch
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        uint256 eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have no eligible balance");
+
+        // Deposit 100 tokens
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 0, "User should have 0 eligible balance");
+
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
+        
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Deposit 100 tokens
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 100e18, "User should still have 100 eligible balance");
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 200e18, "User should have 200 eligible balance");
+
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Withdraw 50 tokens
+        teller.bulkWithdraw(ERC20(address(token)), 50e18, 0, address(this));
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 150e18, "User should have 150 eligible balance");
+        
+        // Simulate time passing so that the epoch can end.
+        skip(10); // Skip 10 seconds
+
+        // Call the rollOverEpoch function.
+        boringVault.rollOverEpoch();
+
+        // Get the user's eligible balance
+        eligibleBalance = boringVault.getUserEligibleBalance(address(this));
+        assertEq(eligibleBalance, 150e18, "User should still have 150 eligible balance");
+    }
 
     // /*//////////////////////////////////////////////////////////////
     //                         INTEGRATION & EDGE CASES
