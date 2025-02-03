@@ -452,4 +452,31 @@ contract BoringChef is Auth, ERC20 {
         // and balanceChanges[low].epoch is the largest epoch not exceeding `epoch`.
         return balanceChanges[low].totalSharesBalance;
     }
+
+    function _getEpochRatios(address user, uint256 startEpoch, uint256 endEpoch) internal view returns (uint256[] memory epochRatios) {
+        uint256[] memory epochRatios = new uint256[](endEpoch - startEpoch + 1);
+
+        // Binary search for the first epoch
+        BalanceUpdate[] memory balanceUpdates = balanceUpdates[user];
+        uint256 balanceIndex = _binarySearchForBalanceIndex(startEpoch, balanceUpdates); // TODO: implement ths fn by forking _findUserBalanceAtEpoch
+
+        // Fill in the user's fraction of shares for each epoch
+        for (uint256 i = startEpoch; i <= endEpoch; i++) {
+            // Increment balanceIndex until there is either not a next balance update or the next balance update is greater than the current epoch
+            for(; balanceIndex + 1 < balanceUpdates.length && balanceUpdates[balanceIndex+1].epoch > i; balanceIndex++); // TODO: can probably optimize this further by not SLOADing balanceUpdates twice per index
+
+            // Calculate the user's fraction of shares for this epoch
+            epochRatios[i - startEpoch] = balanceUpdates[balanceIndex].totalSharesBalance.mulDivDown(epochs[i].eligibleShares);
+        }
+
+        return epochRatios;
+    }
+
+    function newClaim(uint256[] memory rewardIds) external {
+        uint256[][] memory userRewards = 
+    }
+
+    function _binarySearchForBalanceIndex(uint256 epoch, address user) internal pure returns (uint256) {
+        //TODO: Fork _findUserBalanceAtEpoch to return index
+    }
 }
