@@ -195,7 +195,13 @@ contract BoringVaultTest is Test {
         // -----------------------------------
         // 2. Withdraw 40 Shares Partially
         // -----------------------------------
-        
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+
+        // Record the initial eligible shares.
+        (uint256 eligibleBefore, ,) = boringVault.epochs(boringVault.currentEpoch());
+
         // Call bulkWithdraw on the teller.
         // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
         uint256 assetsReceived = teller.bulkWithdraw(ERC20(address(token)), withdrawShares, 0, address(this));
@@ -215,98 +221,172 @@ contract BoringVaultTest is Test {
         // After withdrawing 40e18 tokens (in asset value), their balance should be 900e18 + 40e18 = 940e18.
         uint256 finalTokenBalance = token.balanceOf(address(this));
         assertEq(finalTokenBalance, 940e18, "User token balance after partial withdrawal is incorrect");
+
+        // (b) Verify that the eligibleShares in the current epoch have decreased appropriately.
+        (uint256 eligibleAfter, ,) = boringVault.epochs(boringVault.currentEpoch());
+
+        // Expected eligible shares should be the initial eligible shares minus withdrawShares.
+        assertEq(eligibleAfter, eligibleBefore - withdrawShares, "Eligible shares in current epoch not updated correctly after withdrawal.");
     }
 
-    function testWithdrawAll() external {}
+    function testWithdrawAll() external {
+        // Define deposit and withdrawal amounts.
+        uint256 depositAmount = 100e18;
+        uint256 withdrawShares = 100e18;
+
+        // -------------------------------
+        // 1. Deposit 100 Tokens
+        // -------------------------------
+        // Approve the BoringVault for the deposit amount.
+        token.approve(address(boringVault), depositAmount);
+        
+        // Call the deposit function on the teller.
+        // (minimumMint is set to 0 for simplicity)
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Verify that testUser's vault share balance equals the deposit amount (assuming 1:1 rate).
+        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(initialVaultBalance, depositAmount, "Initial vault share balance should equal deposit amount");
+
+        // -----------------------------------
+        // 2. Withdraw 100 Shares
+        // -----------------------------------
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+
+        // Record the initial eligible shares.
+        (uint256 eligibleBefore, ,) = boringVault.epochs(boringVault.currentEpoch());
+        
+        // Call bulkWithdraw on the teller.
+        // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
+        uint256 assetsReceived = teller.bulkWithdraw(ERC20(address(token)), withdrawShares, 0, address(this));
+
+        // Under a 1:1 rate, assetsReceived should equal withdrawShares.
+        assertEq(assetsReceived, withdrawShares, "Assets received should equal withdrawn shares");
+
+        // -----------------------------------
+        // 3. Verify Final Vault and Token Balances
+        // -----------------------------------
+        // The vault share balance for address(this) should now be 0e18.
+        uint256 finalVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(finalVaultBalance, depositAmount - withdrawShares, "Final vault share balance is incorrect");
+
+        // Assuming address(this) started with 1,000e18 tokens:
+        // After depositing 100e18 tokens, address(this)’s token balance becomes 900e18.
+        // After withdrawing 100e18 tokens (in asset value), their balance should be 900e18 + 100e18 = 1000e18.
+        uint256 finalTokenBalance = token.balanceOf(address(this));
+        assertEq(finalTokenBalance, 1000e18, "User token balance after partial withdrawal is incorrect");
+
+        // (b) Verify that the eligibleShares in the current epoch have decreased appropriately.
+        (uint256 eligibleAfter, ,) = boringVault.epochs(boringVault.currentEpoch());
+        
+        // Expected eligible shares should be the initial eligible shares minus withdrawShares.
+        assertEq(eligibleAfter, eligibleBefore - withdrawShares, "Eligible shares in current epoch not updated correctly after withdrawal.");
+    }
+
     function testFailWithdrawExceedingBalance() external {
-        boringChef = BoringChef(address(0));
+        // Define deposit and withdrawal amounts.
+        uint256 depositAmount = 100e18;
+        uint256 withdrawShares = 100e18;
 
-        revert("test");
+        // Approve the BoringVault for the deposit amount.
+        token.approve(address(boringVault), depositAmount);
+        
+        // Call the deposit function on the teller.
+        // (minimumMint is set to 0 for simplicity)
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+        
+        // Call bulkWithdraw on the teller.
+        // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
+        teller.bulkWithdraw(ERC20(address(token)), withdrawShares + 1, 0, address(this));
     }
-    function testDepositZero() external {}
-    function testWithdrawZero() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            TRANSFERS
-    //////////////////////////////////////////////////////////////*/
+    // /*//////////////////////////////////////////////////////////////
+    //                         TRANSFERS
+    // //////////////////////////////////////////////////////////////*/
     function testBasicTransfer() external {}
-    function testZeroTransfer() external {}
-    function testTransferSelf() external {}
-    function testFailTransferFromInsufficientAllowance() external {
-        boringChef = BoringChef(address(0));
+    
+    // function testZeroTransfer() external {}
+    // function testTransferSelf() external {}
+    // function testFailTransferFromInsufficientAllowance() external {
+    //     boringChef = BoringChef(address(0));
 
-        revert("test");
-    }
-    function testTransferFromWithSufficientAllowance() external {}
+    //     revert("test");
+    // }
+    // function testTransferFromWithSufficientAllowance() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            EPOCH ROLLING
-    //////////////////////////////////////////////////////////////*/
-    function testManualEpochRollover() external {}
-    function testMultipleEpochRollovers() external {}
-    function testRolloverNoUsers() external {}
+    // /*//////////////////////////////////////////////////////////////
+    //                         EPOCH ROLLING
+    // //////////////////////////////////////////////////////////////*/
+    // function testManualEpochRollover() external {}
+    // function testMultipleEpochRollovers() external {}
+    // function testRolloverNoUsers() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            REWARDS
-    //////////////////////////////////////////////////////////////*/
-    function testDistributeRewardsValidRange() external {}
-    function testFailDistributeRewardsStartEpochGreaterThanEndEpoch() external {
-        boringChef = BoringChef(address(0));
+    // /*//////////////////////////////////////////////////////////////
+    //                         REWARDS
+    // //////////////////////////////////////////////////////////////*/
+    // function testDistributeRewardsValidRange() external {}
+    // function testFailDistributeRewardsStartEpochGreaterThanEndEpoch() external {
+    //     boringChef = BoringChef(address(0));
 
-        revert("test");
-    }
-    function testFailDistributeRewardsEndEpochInFuture() external {
-        boringChef = BoringChef(address(0));
+    //     revert("test");
+    // }
+    // function testFailDistributeRewardsEndEpochInFuture() external {
+    //     boringChef = BoringChef(address(0));
 
-        revert("test");
-    }
-    function testFailDistributeRewardsInsufficientTokenBalance() external {
-        boringChef = BoringChef(address(0));
+    //     revert("test");
+    // }
+    // function testFailDistributeRewardsInsufficientTokenBalance() external {
+    //     boringChef = BoringChef(address(0));
 
-        revert("test");
-    }
-    function testSingleEpochRewardDistribution() external {}
+    //     revert("test");
+    // }
+    // function testSingleEpochRewardDistribution() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            CLAIMS
-    //////////////////////////////////////////////////////////////*/
-    function testClaimFullRange() external {}
-    function testClaimPartialEpochParticipation() external {}
-    function testClaimZeroTotalShares() external {}
-    function testClaimAlreadyClaimed() external {}
-    function testClaimMultipleRewards() external {}
+    // /*//////////////////////////////////////////////////////////////
+    //                         CLAIMS
+    // //////////////////////////////////////////////////////////////*/
+    // function testClaimFullRange() external {}
+    // function testClaimPartialEpochParticipation() external {}
+    // function testClaimZeroTotalShares() external {}
+    // function testClaimAlreadyClaimed() external {}
+    // function testClaimMultipleRewards() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            USER SHARE ACCOUNTING
-    //////////////////////////////////////////////////////////////*/
-    function testFindUserBalanceAtEpochNoDeposits() external {}
-    function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
-    function testFindUserBalanceAtEpochExactMatch() external {}
-    function testFindUserBalanceAtEpochMultipleUpdates() external {}
+    // /*//////////////////////////////////////////////////////////////
+    //                         USER SHARE ACCOUNTING
+    // //////////////////////////////////////////////////////////////*/
+    // function testFindUserBalanceAtEpochNoDeposits() external {}
+    // function testFindUserBalanceAtEpochAllUpdatesAfter() external {}
+    // function testFindUserBalanceAtEpochExactMatch() external {}
+    // function testFindUserBalanceAtEpochMultipleUpdates() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            USER SHARE ACCOUNTING
-    //////////////////////////////////////////////////////////////*/
-    function testUpdateUserShareAccountingSameEpochMultipleTimes() external {}
-    function testUpdateUserShareAccountingBrandNewEpoch() external {}
-    function testUpdateUserShareAccountingEmpty() external {}
+    // /*//////////////////////////////////////////////////////////////
+    //                         USER SHARE ACCOUNTING
+    // //////////////////////////////////////////////////////////////*/
+    // function testUpdateUserShareAccountingSameEpochMultipleTimes() external {}
+    // function testUpdateUserShareAccountingBrandNewEpoch() external {}
+    // function testUpdateUserShareAccountingEmpty() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            ROLE-BASED SECURITY
-    //////////////////////////////////////////////////////////////*/
-    function testFailDistributeRewardsUnauthorized() external {
-        boringChef = BoringChef(address(0));
+    // /*//////////////////////////////////////////////////////////////
+    //                         ROLE-BASED SECURITY
+    // //////////////////////////////////////////////////////////////*/
+    // function testFailDistributeRewardsUnauthorized() external {
+    //     boringChef = BoringChef(address(0));
 
-        revert("test");
-    }
-    function testDistributeRewardsByOwner() external {}
+    //     revert("test");
+    // }
+    // function testDistributeRewardsByOwner() external {}
 
-    /*//////////////////////////////////////////////////////////////
-                            INTEGRATION & EDGE CASES
-    //////////////////////////////////////////////////////////////*/
-    function testMultipleUsersIntegration() external {}
-    function testZeroDurationEpoch() external {}
-    function testLargeRewards() external {}
-    function testFractionalDivisionsRounding() external {}
-    function testStressManyEpochs() external {}
+    // /*//////////////////////////////////////////////////////////////
+    //                         INTEGRATION & EDGE CASES
+    // //////////////////////////////////////////////////////////////*/
+    // function testMultipleUsersIntegration() external {}
+    // function testZeroDurationEpoch() external {}
+    // function testLargeRewards() external {}
+    // function testFractionalDivisionsRounding() external {}
+    // function testStressManyEpochs() external {}
 }
