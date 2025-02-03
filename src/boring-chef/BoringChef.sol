@@ -169,7 +169,7 @@ contract BoringChef is Auth, ERC20 {
             });
 
             // Transfer the reward tokens to the BoringSafe.
-            ERC20(tokens[i]).safeTransfer(address(boringSafe), amounts[i]);
+            ERC20(tokens[i]).safeTransferFrom(msg.sender, address(boringSafe), amounts[i]);
 
             // Emit an event for this reward distribution.
             emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i]);
