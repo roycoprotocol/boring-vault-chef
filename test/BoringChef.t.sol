@@ -1167,11 +1167,252 @@ contract BoringVaultTest is Test {
     // /*//////////////////////////////////////////////////////////////
     //                         CLAIMS
     // //////////////////////////////////////////////////////////////*/
-    // function testClaimFullRange() external {}
-    // function testClaimPartialEpochParticipation() external {}
-    // function testClaimZeroTotalShares() external {}
-    // function testClaimAlreadyClaimed() external {}
-    // function testClaimMultipleRewards() external {}
+    
+    function testRewardClaiming() external {
+        // ─────────────────────────────────────────────────────────────
+        // SETUP: Roles and deploy additional reward tokens.
+        // ─────────────────────────────────────────────────────────────
+        rolesAuthority.setUserRole(testUser, DEPOSITOR_ROLE, true);
+        rolesAuthority.setUserRole(anotherUser, DEPOSITOR_ROLE, true);
+        rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.deposit.selector, true);
+        rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.bulkWithdraw.selector, true);
+
+        // Deploy three reward tokens.
+        MockERC20 rewardToken1 = new MockERC20("Reward Token 1", "RT1", 18);
+        MockERC20 rewardToken2 = new MockERC20("Reward Token 2", "RT2", 18);
+        MockERC20 rewardToken3 = new MockERC20("Reward Token 3", "RT3", 18);
+
+        // Mint reward tokens.
+        rewardToken1.mint(address(this), 20e18);
+        rewardToken2.mint(address(this), 30e18);
+        rewardToken3.mint(address(this), 10e18);
+
+        // ─────────────────────────────────────────────────────────────
+        // DEPOSITS AT DIFFERENT TIMES (Different epochs and amounts)
+        // Note: Deposits are recorded for the upcoming epoch (currentEpoch + 1).
+        // Epoch 1: 100 tokens -- Address(this) deposits 100 tokens.
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0); // recorded for epoch 1
+        skip(50); // simulate 50 seconds
+        boringVault.rollOverEpoch(); // currentEpoch becomes 1
+
+        // Epoch 2: 150 tokens -- testUser deposits 150 tokens.
+        vm.startPrank(testUser);
+        token.approve(address(boringVault), 150e18);
+        teller.deposit(ERC20(address(token)), 150e18, 0); // recorded for epoch 2
+        vm.stopPrank();
+        skip(100);
+        boringVault.rollOverEpoch(); // currentEpoch becomes 2
+
+        // Epoch 3: 200 + 50 tokens -- anotherUser deposits 200 tokens and Address(this) deposits an additional 50 tokens.
+        vm.startPrank(anotherUser);
+        token.approve(address(boringVault), 200e18);
+        teller.deposit(ERC20(address(token)), 200e18, 0); // recorded for epoch 3
+        vm.stopPrank();
+        token.approve(address(boringVault), 50e18);
+        teller.deposit(ERC20(address(token)), 50e18, 0); // recorded for epoch 3
+
+        skip(200);
+        boringVault.rollOverEpoch(); // currentEpoch becomes 3
+        skip(300);
+        boringVault.rollOverEpoch(); // currentEpoch becomes 4
+        skip(100);
+        boringVault.rollOverEpoch(); // currentEpoch becomes 5
+
+        // ─────────────────────────────────────────────────────────────
+        // REWARD DISTRIBUTIONS:
+        // Reward 0: token from epoch 1 to epoch 3, total = 60e18.
+        // Reward 1: rewardToken1 from epoch 2 to epoch 4, total = 20e18.
+        // Reward 2: rewardToken2 from epoch 1 to epoch 4, total = 30e18.
+        // Reward 3: rewardToken3 from epoch 3 to epoch 3, total = 10e18.
+        // ─────────────────────────────────────────────────────────────
+        address[] memory tokenArray = new address[](4);
+        tokenArray[0] = address(token);
+        tokenArray[1] = address(rewardToken1);
+        tokenArray[2] = address(rewardToken2);
+        tokenArray[3] = address(rewardToken3);
+
+        uint256[] memory amountArray = new uint256[](4);
+        amountArray[0] = 60e18;
+        amountArray[1] = 20e18;
+        amountArray[2] = 30e18;
+        amountArray[3] = 10e18;
+
+        // Using uint128 for start/end epoch arrays to ease stack pressure.
+        uint128[] memory startEpochArray = new uint128[](4);
+        startEpochArray[0] = 1;
+        startEpochArray[1] = 2;
+        startEpochArray[2] = 1;
+        startEpochArray[3] = 3;
+
+        uint128[] memory endEpochArray = new uint128[](4);
+        endEpochArray[0] = 3;
+        endEpochArray[1] = 4;
+        endEpochArray[2] = 4;
+        endEpochArray[3] = 3;
+
+        token.approve(address(boringVault), 60e18);
+        rewardToken1.approve(address(boringVault), 20e18);
+        rewardToken2.approve(address(boringVault), 30e18);
+        rewardToken3.approve(address(boringVault), 10e18);
+
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+
+        // ─────────────────────────────────────────────────────────────
+        // CLAIM REWARDS
+        // ─────────────────────────────────────────────────────────────
+        // Set up reward IDs.
+        uint256[] memory rewardIds = new uint256[](4);
+        rewardIds[0] = 0;
+        rewardIds[1] = 1;
+        rewardIds[2] = 2;
+        rewardIds[3] = 3;
+
+        // Claim rewards for owner.
+        boringVault.claimRewards(rewardIds);
+
+        // Claim rewards for testUser.
+        vm.startPrank(testUser);
+        boringVault.claimRewards(rewardIds);
+        vm.stopPrank();
+
+        // Claim rewards for anotherUser.
+        vm.startPrank(anotherUser);
+        boringVault.claimRewards(rewardIds);
+        vm.stopPrank();
+
+        // Ensure balances are correct for owner.
+        assertEq(rewardToken1.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 1), "Reward token 1 balance mismatch");
+        assertEq(rewardToken2.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 2), "Reward token 2 balance mismatch");
+        assertEq(rewardToken3.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 3), "Reward token 3 balance mismatch");
+
+        // Ensure balances are correct for testUser.
+        assertEq(rewardToken1.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 1), "Reward token 1 balance mismatch");
+        assertEq(rewardToken2.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 2), "Reward token 2 balance mismatch");
+        assertEq(rewardToken3.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 3), "Reward token 3 balance mismatch");
+
+        // Ensure balances are correct for anotherUser.
+        assertEq(rewardToken1.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 1), "Reward token 1 balance mismatch");
+        assertEq(rewardToken2.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 2), "Reward token 2 balance mismatch");
+        assertEq(rewardToken3.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 3), "Reward token 3 balance mismatch");
+    }
+
+    function testComplexRewardClaiming() external {
+        // ─────────────────────────────────────────────────────────────
+        // DEPLOY REWARD TOKENS: Deploy 20 reward tokens.
+        // ─────────────────────────────────────────────────────────────
+        uint256 numRewardTokens = 20;
+        MockERC20[] memory rewardTokens = new MockERC20[](numRewardTokens);
+        for (uint256 i = 0; i < numRewardTokens; i++) {
+            rewardTokens[i] = new MockERC20(
+                string(abi.encodePacked("Reward Token ", uint2str(i))),
+                string(abi.encodePacked("RT", uint2str(i))),
+                18
+            );
+
+            // Mint the reward tokens to the test contract.
+            rewardTokens[i].mint(address(this), 100e18);
+        }
+        
+        // ─────────────────────────────────────────────────────────────
+        // SIMULATE MULTIPLE EPOCHS OF DEPOSITS:
+        // We'll simulate 10 epochs.
+        // For each epoch, each user deposits 10e18.
+        // Each deposit is for 1e18 tokens.
+        uint256 totalEpochs = 100;
+        uint256 depositAmount = 1e18;
+
+        // Iterate over each epoch.
+        for (uint256 epoch = 0; epoch < totalEpochs; epoch++) {
+            // Skip time.
+            skip(100);
+
+            // Mint the deposit amount to the user.
+            token.mint(address(this), depositAmount);
+
+            // Approve the deposit.
+            token.approve(address(boringVault), depositAmount);
+
+            // Deposit.
+            teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+            // Roll over the epoch.
+            boringVault.rollOverEpoch();
+        }
+        
+        // ─────────────────────────────────────────────────────────────
+        // PREPARE REWARD CAMPAIGNS:
+        // For each reward token, choose a campaign duration between 3 and 10 epochs.
+        uint256 currentEpoch = boringVault.currentEpoch(); // should be ~10 after rollovers.
+        uint128[] memory startEpochArray = new uint128[](numRewardTokens);
+        uint128[] memory endEpochArray = new uint128[](numRewardTokens);
+        uint256[] memory amountArray = new uint256[](numRewardTokens);
+
+        for (uint256 i = 0; i < numRewardTokens; i++) {
+            // 100 epochs in length.
+            uint256 startEpoch = 0;
+            uint256 duration = 100;
+
+            uint256 endEpoch = startEpoch + duration;
+            if (endEpoch >= currentEpoch) {
+                endEpoch = currentEpoch - 1;
+            }
+            startEpochArray[i] = uint128(startEpoch);
+            endEpochArray[i] = uint128(endEpoch);
+            // Set reward amount: start at 1e18 and add i * 0.1e18.
+            amountArray[i] = 1e18 + (i * 1e17);
+        }
+        
+        // Build tokenArray from rewardTokens.
+        address[] memory tokenArray = new address[](numRewardTokens);
+        for (uint256 i = 0; i < numRewardTokens; i++) {
+            tokenArray[i] = address(rewardTokens[i]);
+        }
+
+        // Ensure we are the owner.
+        vm.startPrank(owner);
+        
+        // Approve reward tokens for distribution.
+        for (uint256 i = 0; i < numRewardTokens; i++) {
+            rewardTokens[i].approve(address(boringVault), amountArray[i]);
+        }
+        
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+        
+        // ─────────────────────────────────────────────────────────────
+        // CLAIM REWARDS:
+        // All users claim rewards for all campaigns.
+        uint256[] memory rewardIds = new uint256[](numRewardTokens);
+        for (uint256 i = 0; i < numRewardTokens; i++) {
+            rewardIds[i] = i;
+        }
+
+        // Claim rewards for the test contract.
+        boringVault.claimRewards(rewardIds);
+    }
+
+    // Helper: convert uint256 to string.
+    function uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 length;
+        while (j != 0) {
+            length++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(length);
+        uint256 k = length;
+        while (_i != 0) {
+            k = k - 1;
+            uint8 temp = (48 + uint8(_i - (_i / 10) * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
+    }
 
     // /*//////////////////////////////////////////////////////////////
     //                         USER SHARE ACCOUNTING
@@ -1249,6 +1490,7 @@ contract BoringVaultTest is Test {
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
     }
+
     function testFindUserBalanceAtEpochMultipleUpdates() external {
         // Create a new epoch
         boringVault.rollOverEpoch();
