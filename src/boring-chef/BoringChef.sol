@@ -412,8 +412,6 @@ contract BoringChef is Auth, ERC20 {
         if (userBalanceUpdates.length == 0) {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
         } else if (userBalanceUpdates.length == 1) {
-            // Get the last balance update
-            BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Ensure no duplicate entries
             if (lastBalanceUpdate.epoch == epoch) {
                 lastBalanceUpdate.totalSharesBalance = uint128(balanceOf[user]);
@@ -422,8 +420,6 @@ contract BoringChef is Auth, ERC20 {
                 userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
             }
         } else {
-            // Get the last balance update
-            BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Get the second last balance update
             BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 2];
             // Ensure no duplicate entries
@@ -442,12 +438,12 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
-    /// @notice Find the user's share balance at a specific epoch via binary search.
-    /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.
-    /// @param epoch The epoch for which we want the user's balance.
-    /// @param balanceChanges The historical balance updates for a user, sorted ascending by epoch.
-    /// @return The user's shares at the given epoch.
-    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
+    /// @notice Get the epoch range for a given array of reward IDs.
+    /// @param rewardIds The IDs of the rewards to get the epoch range for.
+    /// @return minEpoch The minimum epoch for the given rewards.
+    /// @return maxEpoch The maximum epoch for the given rewards.
+    /// @return rewardsToClaim The rewards to claim for the given reward IDs.
+    function _getEpochRangeForRewards(uint256[] calldata rewardIds)
         internal
         returns (uint128 minEpoch, uint128 maxEpoch, Reward[] memory rewardsToClaim)
     {
@@ -505,6 +501,58 @@ contract BoringChef is Auth, ERC20 {
         }
         // Write back the final cache to persistent storage
         userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
+    }
+
+    /// @notice Find the user's share balance at a specific epoch via binary search.
+    /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.
+    /// @param epoch The epoch for which we want the user's balance.
+    /// @param balanceChanges The historical balance updates for a user, sorted ascending by epoch.
+    /// @return The user's shares at the given epoch.
+    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
+        internal
+        pure
+        returns (uint256)
+    {
+        // Edge case: no balance changes at all
+        if (balanceChanges.length == 0) {
+            return 0;
+        }
+
+        // If the requested epoch is before the first recorded epoch,
+        // assume the user had 0 shares.
+        if (epoch < balanceChanges[0].epoch) {
+            return 0;
+        }
+
+        // If the requested epoch is beyond the last recorded epoch,
+        // return the most recent known balance.
+        uint256 lastIndex = balanceChanges.length - 1;
+        if (epoch >= balanceChanges[lastIndex].epoch) {
+            return balanceChanges[lastIndex].totalSharesBalance;
+        }
+
+        // Standard binary search:
+        // We want the highest index where balanceChanges[index].epoch <= epoch
+        uint256 low = 0;
+        uint256 high = lastIndex;
+
+        // Perform the binary search in the range [low, high]
+        while (low < high) {
+            // Midpoint (biased towards the higher index when (low+high) is even)
+            uint256 mid = (low + high + 1) >> 1; // same as (low + high + 1) / 2
+
+            if (balanceChanges[mid].epoch <= epoch) {
+                // If mid's epoch is <= target, we move `low` up to mid
+                low = mid;
+            } else {
+                // If mid's epoch is > target, we move `high` down to mid - 1
+                high = mid - 1;
+            }
+        }
+
+        // Now `low == high`, which should be the index where epoch <= balanceChanges[low].epoch
+        // and balanceChanges[low].epoch is the largest epoch not exceeding `epoch`.
+        return balanceChanges[low].totalSharesBalance;
     }
 
     /// @dev Computes the user's share ratios and epoch durations for every epoch between minEpoch and maxEpoch.
