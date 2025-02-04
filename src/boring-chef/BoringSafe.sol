@@ -6,7 +6,7 @@ import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 
 /// @title BoringSafe
-/// @notice Lightweight middleware contract for holding funds that have been commited to reward campaigns in BoringChef.
+/// @notice Lightweight middleware contract for holding funds that have been committed to reward campaigns in BoringChef.
 contract BoringSafe is Owned(msg.sender) {
     using SafeTransferLib for ERC20;
 
