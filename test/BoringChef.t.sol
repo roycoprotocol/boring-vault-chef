@@ -11,7 +11,7 @@ import {ERC20} from "lib/solmate/src/tokens/ERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {FixedPointMathLib} from "lib/solmate/src/utils/FixedPointMathLib.sol";
 
-contract BoringVaultTest is Test {
+contract BoringChefTest is Test {
     using stdStorage for StdStorage;
     using FixedPointMathLib for uint256;
 
