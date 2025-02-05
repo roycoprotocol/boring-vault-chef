@@ -403,15 +403,9 @@ contract BoringChef is Auth, ERC20 {
         // If there are no balance updates, create a new one
         if (userBalanceUpdates.length == 0) {
             userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
-        }
-    
-        // Get the last balance update
-        BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
-
-        // If there are no balance updates, create a new one
-        if (userBalanceUpdates.length == 0) {
-            userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
         } else if (userBalanceUpdates.length == 1) {
+            // Get the last balance update
+            BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Ensure no duplicate entries
             if (lastBalanceUpdate.epoch == epoch) {
                 lastBalanceUpdate.totalSharesBalance = uint128(balanceOf[user]);
@@ -420,6 +414,8 @@ contract BoringChef is Auth, ERC20 {
                 userBalanceUpdates.push(BalanceUpdate({epoch: epoch, totalSharesBalance: uint128(balanceOf[user])}));
             }
         } else {
+            // Get the last balance update
+            BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Get the second last balance update
             BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 2];
             // Ensure no duplicate entries
@@ -438,65 +434,72 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
-    /// @notice Get the epoch range for a given array of reward IDs.
-    /// @param rewardIds The IDs of the rewards to get the epoch range for.
-    /// @return minEpoch The minimum epoch for the given rewards.
-    /// @return maxEpoch The maximum epoch for the given rewards.
-    /// @return rewardsToClaim The rewards to claim for the given reward IDs.
     function _getEpochRangeForRewards(uint256[] calldata rewardIds)
         internal
         returns (uint128 minEpoch, uint128 maxEpoch, Reward[] memory rewardsToClaim)
     {
+        // Cache array length and rewards for gas op
         uint256 rewardsLength = rewardIds.length;
         rewardsToClaim = new Reward[](rewardsLength);
 
-        // Initialize the epoch range.
+        // Initialize epoch range
         minEpoch = type(uint128).max;
         maxEpoch = 0;
 
-        // Variables to cache reward claim data.
+        // Variables to cache reward claim data as a gas optimization
         uint256 cachedRewardBucket;
         uint256 cachedClaimedRewards;
 
+        // Variables used to preprocess rewardsIds to get a range of epochs for all rewards and mark them as claimed
         for (uint256 i = 0; i < rewardsLength; ++i) {
-            uint256 rewardBucket = rewardIds[i] / 256;
-            if (i == 0) {
-                cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
-                cachedRewardBucket = rewardBucket;
-            } else if (cachedRewardBucket != rewardBucket) {
-                userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
-                cachedRewardBucket = rewardBucket;
-                cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
-            }
-            uint256 bitOffset = rewardIds[i] % 256;
-            bool claimed = ((cachedClaimedRewards >> bitOffset) & 1) == 1;
-            if (claimed) {
-                revert RewardClaimedAlready(rewardIds[i]);
-            } else {
-                cachedClaimedRewards |= (1 << bitOffset);
+            // Cache management (reading and writing)
+            {
+                // Determine the reward bucket that this rewardId belongs in
+                uint256 rewardBucket = rewardIds[i] / 256;
+
+                if (i == 0) {
+                    // Read the 256 bit bit-field to get this rewardId's claim status
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                } else if (cachedRewardBucket != rewardBucket) {
+                    // Write back the cached claim data to persistent storage
+                    userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
+                    // Updated cache with the new reward bucket and rewards bit field
+                    cachedRewardBucket = rewardBucket;
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                }
+
+                // The bit offset for rewardId within that bucket
+                uint256 bitOffset = rewardIds[i] % 256;
+
+                // Shift right so that the target bit is in the least significant position,
+                // then check if it's 1 (indicating that it has been claimed)
+                bool claimed = ((cachedClaimedRewards >> bitOffset) & 1) == 1;
+                if (claimed) {
+                    // If the user has already claimed this reward, revert.
+                    revert RewardClaimedAlready(rewardIds[i]);
+                } else {
+                    // If user hasn't claimed this reward
+                    // Set the bit corresponding to rewardId to true - indicating it has been claimed
+                    cachedClaimedRewards |= (1 << bitOffset);
+                }
             }
 
+            // Retrieve the reward ID, start epoch, and end epoch.
             Reward storage reward = rewards[rewardIds[i]];
-            uint128 startEpochValue = reward.startEpoch;
-            uint128 endEpochValue = reward.endEpoch;
-
-            if (startEpochValue < minEpoch) {
-                minEpoch = startEpochValue;
+            uint128 startEpoch = reward.startEpoch;
+            uint128 endEpoch = reward.endEpoch;
+            if (startEpoch < minEpoch) {
+                minEpoch = startEpoch;
             }
-            if (endEpochValue > maxEpoch) {
-                maxEpoch = endEpochValue;
+            if (endEpoch > maxEpoch) {
+                maxEpoch = endEpoch;
             }
-            
-            rewardsToClaim[i] = Reward({
-                token: reward.token,
-                rewardRate: reward.rewardRate,
-                startEpoch: startEpochValue,
-                endEpoch: endEpochValue
-            });
+            // Move reward to memory for subsequent remittance logic
+            rewardsToClaim[i] = Reward(reward.token, reward.rewardRate, startEpoch, endEpoch);
         }
+        // Write back the final cache to persistent storage
         userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
     }
-
 
     /// @notice Find the user's share balance at a specific epoch via binary search.
     /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.

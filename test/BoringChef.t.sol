@@ -58,7 +58,9 @@ contract BoringVaultTest is Test {
         // Deploy a dummy accountant.
         // If you have a proper mock, deploy it here; for now we use address(0) as a placeholder.
         // In a real test you should replace address(0) with a deployed mock that implements AccountantWithRateProviders.
-        accountant = new AccountantWithRateProviders(address(this), address(boringVault), address(0), 1e18, address(token), 1000, 1000, 1, 0, 0);
+        accountant = new AccountantWithRateProviders(
+            address(this), address(boringVault), address(0), 1e18, address(token), 1000, 1000, 1, 0, 0
+        );
 
         // Deploy the TellerWithMultiAssetSupport.
         // Its constructor requires (_owner, _vault, _accountant, _weth). For testing, you can pass token as a placeholder for the native wrapper.
@@ -132,19 +134,23 @@ contract BoringVaultTest is Test {
         uint256 expectedEpoch = boringVault.currentEpoch() + 1;
         assertEq(recordedEpoch, expectedEpoch, "The balance update epoch is not correct.");
         // The recorded balance should match the user's current share balance.
-        assertEq(recordedBalance, boringVault.balanceOf(address(this)), "The recorded user balance does not match the vault balance.");
+        assertEq(
+            recordedBalance,
+            boringVault.balanceOf(address(this)),
+            "The recorded user balance does not match the vault balance."
+        );
 
         // Check that the upcoming epoch's eligibleShares equals the deposit amount.
-        // Since this is the first deposit and assuming no other deposits have occurred, 
+        // Since this is the first deposit and assuming no other deposits have occurred,
         // the upcoming epoch (currentEpoch + 1) should have eligibleShares equal to depositAmount.
-        (uint256 epochEligibleShares, ,) = boringVault.epochs(expectedEpoch);
+        (uint256 epochEligibleShares,,) = boringVault.epochs(expectedEpoch);
         assertEq(epochEligibleShares, depositAmount, "Upcoming epoch's eligible shares not updated correctly.");
     }
-    
+
     function testMultipleDeposits() external {
         // Define deposit amounts.
         uint256 depositAmount1 = 100e18; // address(this)'s first deposit
-        uint256 depositAmount2 = 50e18;  // address(this)'s second deposit
+        uint256 depositAmount2 = 50e18; // address(this)'s second deposit
 
         // Approve teller to spend the total deposit amount.
         token.approve(address(boringVault), depositAmount1 + depositAmount2);
@@ -161,13 +167,19 @@ contract BoringVaultTest is Test {
 
         // --- Check token balances ---
         // Assuming each started with 1,000e18 tokens:
-        assertEq(token.balanceOf(address(this)), 1_000e18 - (depositAmount1 + depositAmount2), "TestUser token balance incorrect.");
+        assertEq(
+            token.balanceOf(address(this)),
+            1_000e18 - (depositAmount1 + depositAmount2),
+            "TestUser token balance incorrect."
+        );
 
         // --- Check upcoming epoch's eligibleShares ---
         uint256 expectedEpoch = boringVault.currentEpoch() + 1;
-        (uint256 eligibleShares, , ) = boringVault.epochs(expectedEpoch);
+        (uint256 eligibleShares,,) = boringVault.epochs(expectedEpoch);
         // The upcoming epoch's eligibleShares should be the sum of all deposits.
-        assertEq(eligibleShares, depositAmount1 + depositAmount2, "Upcoming epoch eligibleShares not updated correctly.");
+        assertEq(
+            eligibleShares, depositAmount1 + depositAmount2, "Upcoming epoch eligibleShares not updated correctly."
+        );
 
         // --- Check user balance update records ---
         // For address(this): since both deposits occurred in the same upcoming epoch, there should be one record.
@@ -308,7 +320,7 @@ contract BoringVaultTest is Test {
         // -------------------------------
         // Approve the BoringVault for the deposit amount.
         token.approve(address(boringVault), depositAmount);
-        
+
         // Call the deposit function on the teller.
         // (minimumMint is set to 0 for simplicity)
         teller.deposit(ERC20(address(token)), depositAmount, 0);
@@ -325,7 +337,7 @@ contract BoringVaultTest is Test {
         boringVault.rollOverEpoch();
 
         // Record the initial eligible shares.
-        (uint256 eligibleBefore, ,) = boringVault.epochs(boringVault.currentEpoch());
+        (uint256 eligibleBefore,,) = boringVault.epochs(boringVault.currentEpoch());
 
         // Call bulkWithdraw on the teller.
         // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
@@ -348,10 +360,14 @@ contract BoringVaultTest is Test {
         assertEq(finalTokenBalance, 940e18, "User token balance after partial withdrawal is incorrect");
 
         // (b) Verify that the eligibleShares in the current epoch have decreased appropriately.
-        (uint256 eligibleAfter, ,) = boringVault.epochs(boringVault.currentEpoch());
+        (uint256 eligibleAfter,,) = boringVault.epochs(boringVault.currentEpoch());
 
         // Expected eligible shares should be the initial eligible shares minus withdrawShares.
-        assertEq(eligibleAfter, eligibleBefore - withdrawShares, "Eligible shares in current epoch not updated correctly after withdrawal.");
+        assertEq(
+            eligibleAfter,
+            eligibleBefore - withdrawShares,
+            "Eligible shares in current epoch not updated correctly after withdrawal."
+        );
     }
 
     function testWithdrawAll() external {
@@ -364,7 +380,7 @@ contract BoringVaultTest is Test {
         // -------------------------------
         // Approve the BoringVault for the deposit amount.
         token.approve(address(boringVault), depositAmount);
-        
+
         // Call the deposit function on the teller.
         // (minimumMint is set to 0 for simplicity)
         teller.deposit(ERC20(address(token)), depositAmount, 0);
@@ -381,8 +397,8 @@ contract BoringVaultTest is Test {
         boringVault.rollOverEpoch();
 
         // Record the initial eligible shares.
-        (uint256 eligibleBefore, ,) = boringVault.epochs(boringVault.currentEpoch());
-        
+        (uint256 eligibleBefore,,) = boringVault.epochs(boringVault.currentEpoch());
+
         // Call bulkWithdraw on the teller.
         // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
         uint256 assetsReceived = teller.bulkWithdraw(ERC20(address(token)), withdrawShares, 0, address(this));
@@ -404,10 +420,14 @@ contract BoringVaultTest is Test {
         assertEq(finalTokenBalance, 1000e18, "User token balance after partial withdrawal is incorrect");
 
         // (b) Verify that the eligibleShares in the current epoch have decreased appropriately.
-        (uint256 eligibleAfter, ,) = boringVault.epochs(boringVault.currentEpoch());
-        
+        (uint256 eligibleAfter,,) = boringVault.epochs(boringVault.currentEpoch());
+
         // Expected eligible shares should be the initial eligible shares minus withdrawShares.
-        assertEq(eligibleAfter, eligibleBefore - withdrawShares, "Eligible shares in current epoch not updated correctly after withdrawal.");
+        assertEq(
+            eligibleAfter,
+            eligibleBefore - withdrawShares,
+            "Eligible shares in current epoch not updated correctly after withdrawal."
+        );
     }
 
     function testFuzzWithdraw(uint256 withdrawAmount) external {
@@ -560,14 +580,14 @@ contract BoringVaultTest is Test {
 
         // Approve the BoringVault for the deposit amount.
         token.approve(address(boringVault), depositAmount);
-        
+
         // Call the deposit function on the teller.
         // (minimumMint is set to 0 for simplicity)
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
         // Roll over to the next epoch.
         boringVault.rollOverEpoch();
-        
+
         // Call bulkWithdraw on the teller.
         // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
         teller.bulkWithdraw(ERC20(address(token)), withdrawShares + 1, 0, address(this));
@@ -610,17 +630,11 @@ contract BoringVaultTest is Test {
 
         // address(this) should have depositAmount - transferShares left.
         assertEq(
-            finalVaultBalanceThis,
-            depositAmount - transferShares,
-            "address(this) final vault shares are incorrect."
+            finalVaultBalanceThis, depositAmount - transferShares, "address(this) final vault shares are incorrect."
         );
 
         // anotherUser should have exactly 40 shares.
-        assertEq(
-            finalVaultBalanceAnother,
-            transferShares,
-            "anotherUser final vault shares are incorrect."
-        );
+        assertEq(finalVaultBalanceAnother, transferShares, "anotherUser final vault shares are incorrect.");
 
         // b) Token balances do NOT change when transferring shares (only share ownership changes).
         // So address(this) still has 900e18 tokens if they started with 1,000e18 and deposited 100e18.
@@ -636,9 +650,9 @@ contract BoringVaultTest is Test {
             "Token balance of anotherUser should be unchanged after share transfer."
         );
 
-        // c) BoringChef logic: transferring shares triggers _decreaseCurrentEpochParticipation(from) 
+        // c) BoringChef logic: transferring shares triggers _decreaseCurrentEpochParticipation(from)
         //    and _increaseUpcomingEpochParticipation(to).
-        // So the from-user's current epoch eligible shares decrease, 
+        // So the from-user's current epoch eligible shares decrease,
         // while the to-user's share goes to the next epoch's eligibleShares.
         // We'll check these epoch states.
 
@@ -648,57 +662,35 @@ contract BoringVaultTest is Test {
         // The 'to' user is placed in the upcoming epoch (currentEpoch + 1).
         uint256 nextEpochIndex = currentEpochIndex + 1;
 
-        // If no other actions occurred in the current epoch besides our deposit, 
+        // If no other actions occurred in the current epoch besides our deposit,
         // fromEpochEligibleShares should now be (100 - 40) = 60.
         // toEpochEligibleShares should be 40 if this is the user's first time receiving shares
         // in the upcoming epoch.
-        // However, note that if your deposit occurred just moments ago, 
-        // you may or may not have "rolled over" the epoch. 
-        // Usually, deposit sets your shares into (currentEpoch + 1) anyway. 
+        // However, note that if your deposit occurred just moments ago,
+        // you may or may not have "rolled over" the epoch.
+        // Usually, deposit sets your shares into (currentEpoch + 1) anyway.
         // If you want to confirm the effect, you can check those fields.
 
         // d) Check user balance update records:
-        // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch 
-        // and _increaseUpcomingEpochParticipation(to) for the next epoch, you should see a new 
-        // BalanceUpdate entry for each user's array. 
-        // For address(this), a new entry in the currentEpoch with updated balance. 
+        // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch
+        // and _increaseUpcomingEpochParticipation(to) for the next epoch, you should see a new
+        // BalanceUpdate entry for each user's array.
+        // For address(this), a new entry in the currentEpoch with updated balance.
         // For anotherUser, a new entry in nextEpoch with 40 shares.
 
         // Check the last record in from-user's balanceUpdates:
         uint256 fromUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
-        (
-            uint256 lastEpochFrom,
-            uint256 lastBalanceFrom
-        ) = boringVault.balanceUpdates(address(this), fromUpdatesLen - 1);
+        (uint256 lastEpochFrom, uint256 lastBalanceFrom) = boringVault.balanceUpdates(address(this), fromUpdatesLen - 1);
 
-        assertEq(
-            lastEpochFrom, 
-            currentEpochIndex, 
-            "From-user last balance update should track the current epoch."
-        );
-        assertEq(
-            lastBalanceFrom, 
-            depositAmount - transferShares, 
-            "From-user last recorded share balance mismatch."
-        );
+        assertEq(lastEpochFrom, currentEpochIndex, "From-user last balance update should track the current epoch.");
+        assertEq(lastBalanceFrom, depositAmount - transferShares, "From-user last recorded share balance mismatch.");
 
         // Check the last record in to-user's balanceUpdates:
         uint256 toUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
-        (
-            uint256 lastEpochTo,
-            uint256 lastBalanceTo
-        ) = boringVault.balanceUpdates(anotherUser, toUpdatesLen - 1);
+        (uint256 lastEpochTo, uint256 lastBalanceTo) = boringVault.balanceUpdates(anotherUser, toUpdatesLen - 1);
 
-        assertEq(
-            lastEpochTo, 
-            nextEpochIndex, 
-            "To-user last balance update should track the next epoch."
-        );
-        assertEq(
-            lastBalanceTo, 
-            transferShares, 
-            "To-user last recorded share balance mismatch."
-        );
+        assertEq(lastEpochTo, nextEpochIndex, "To-user last balance update should track the next epoch.");
+        assertEq(lastBalanceTo, transferShares, "To-user last recorded share balance mismatch.");
     }
 
     function testFailTransferExceedingBalance() external {
@@ -752,7 +744,6 @@ contract BoringVaultTest is Test {
         boringVault.transfer(anotherUser, transferShares);
     }
 
-
     // /*//////////////////////////////////////////////////////////////
     //                         EPOCH ROLLING
     // //////////////////////////////////////////////////////////////*/
@@ -763,58 +754,65 @@ contract BoringVaultTest is Test {
         token.approve(address(boringVault), depositAmount);
         // Minimum mint is 0 for simplicity.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
-        
+
         // Capture the initial epoch. (Assume currentEpoch is already set; if not, it should be 0.)
         uint256 initialEpoch = boringVault.currentEpoch();
-        
+
         // Read the current epoch data.
-        (, , uint256 endTimestampBefore) = boringVault.epochs(initialEpoch);
+        (,, uint256 endTimestampBefore) = boringVault.epochs(initialEpoch);
         // Before a rollover, the current epoch's endTimestamp should be 0 (still open).
         assertEq(endTimestampBefore, 0, "Current epoch endTimestamp should be 0 before rollover");
-        
+
         // --- (Optional) Check the user's balance update record for upcoming epoch.
         // Expect that the deposit has been recorded for epoch = initialEpoch + 1.
         (uint256 recordedEpoch, uint256 recordedBalance) = boringVault.balanceUpdates(address(this), 0);
         uint256 expectedUpcomingEpoch = initialEpoch + 1;
         assertEq(recordedEpoch, expectedUpcomingEpoch, "Balance update epoch should be currentEpoch + 1");
         assertEq(recordedBalance, boringVault.balanceOf(address(this)), "Recorded balance does not match vault balance");
-        
+
         // --- Simulate a small time lapse.
         skip(10); // skip 10 seconds
-        
+
         // ----- ROLLOVER: Manually roll over to the next epoch -----
         // Call the rollOverEpoch function. (The caller must be authorized; here, address(this) is the owner.)
         boringVault.rollOverEpoch();
-        
+
         // The currentEpoch should now have incremented.
         uint256 newEpoch = boringVault.currentEpoch();
         assertEq(newEpoch, initialEpoch + 1, "Epoch did not increment correctly after rollover");
-        
+
         // ----- Check previous epoch data -----
         // The previous epoch (initialEpoch) should now have an endTimestamp set.
-        (, , uint256 previousEpochEnd) = boringVault.epochs(initialEpoch);
+        (,, uint256 previousEpochEnd) = boringVault.epochs(initialEpoch);
         assertGt(previousEpochEnd, 0, "Previous epoch endTimestamp should be > 0 after rollover");
         // Use an approximate equality check (tolerance of 2 seconds) for block.timestamp.
         assertApproxEqAbs(previousEpochEnd, block.timestamp, 2, "Previous epoch endTimestamp not close to current time");
-        
+
         // ----- Check new epoch data -----
-        ( , uint256 newEpochStart, ) = boringVault.epochs(newEpoch);
+        (, uint256 newEpochStart,) = boringVault.epochs(newEpoch);
         // The new epoch's startTimestamp should be near the current block.timestamp.
         assertApproxEqAbs(newEpochStart, block.timestamp, 2, "New epoch startTimestamp not set correctly");
-        
+
         // The new epoch's eligibleShares should be rolled over from the previous epoch.
         // According to _rollOverEpoch(), if the upcoming epoch's eligibleShares is 0,
         // it gets set to current epoch's eligibleShares.
-        (uint256 eligibleNew, , ) = boringVault.epochs(newEpoch);
-        assertEq(eligibleNew, depositAmount, "New epoch eligibleShares should equal the previous epoch's eligible shares");
-        
+        (uint256 eligibleNew,,) = boringVault.epochs(newEpoch);
+        assertEq(
+            eligibleNew, depositAmount, "New epoch eligibleShares should equal the previous epoch's eligible shares"
+        );
+
         // ----- Check user balance update records -----
         // (Assuming you have a helper function getTotalBalanceUpdates(address) that returns the length of balanceUpdates for a user.)
         uint256 updatesLength = boringVault.getTotalBalanceUpdates(address(this));
         // The latest balance update record should correspond to the new epoch.
-        (uint256 lastUpdateEpoch, uint256 lastRecordedBalance) = boringVault.balanceUpdates(address(this), updatesLength - 1);
+        (uint256 lastUpdateEpoch, uint256 lastRecordedBalance) =
+            boringVault.balanceUpdates(address(this), updatesLength - 1);
         assertEq(lastUpdateEpoch, newEpoch, "Latest balance update epoch should be the new epoch");
-        assertEq(lastRecordedBalance, boringVault.balanceOf(address(this)), "Latest recorded balance does not match current vault balance");
+        assertEq(
+            lastRecordedBalance,
+            boringVault.balanceOf(address(this)),
+            "Latest recorded balance does not match current vault balance"
+        );
     }
 
     function testMultipleEpochRollovers() external {
@@ -847,23 +845,27 @@ contract BoringVaultTest is Test {
             assertEq(currentEpoch, initialEpoch + i + 1, "Epoch did not increment correctly after rollover");
 
             // Check the previous epoch's endTimestamp is set.
-            (, , uint256 prevEpochEnd) = boringVault.epochs(currentEpoch - 1);
+            (,, uint256 prevEpochEnd) = boringVault.epochs(currentEpoch - 1);
             assertGt(prevEpochEnd, 0, "Previous epoch endTimestamp should be > 0 after rollover");
             assertApproxEqAbs(prevEpochEnd, block.timestamp, 2, "Previous epoch endTimestamp not close to current time");
 
             // Check the new epoch's startTimestamp.
-            ( , uint256 currentEpochStart, ) = boringVault.epochs(currentEpoch);
+            (, uint256 currentEpochStart,) = boringVault.epochs(currentEpoch);
             assertApproxEqAbs(currentEpochStart, block.timestamp, 2, "New epoch startTimestamp not set correctly");
 
             // Check that the new epoch's eligibleShares has been rolled over correctly.
             // Since no additional deposits occurred, it should equal the depositAmount.
-            (uint256 eligibleShares, , ) = boringVault.epochs(currentEpoch);
+            (uint256 eligibleShares,,) = boringVault.epochs(currentEpoch);
             assertEq(eligibleShares, depositAmount, "New epoch eligibleShares should equal the initial deposit amount");
         }
 
         // After all rollovers, verify the user's final balance update.
         uint256 lastRecordedBalance = boringVault.getUserEligibleBalance(address(this));
-        assertEq(lastRecordedBalance, boringVault.balanceOf(address(this)), "Latest recorded balance does not match vault balance");
+        assertEq(
+            lastRecordedBalance,
+            boringVault.balanceOf(address(this)),
+            "Latest recorded balance does not match vault balance"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -905,7 +907,7 @@ contract BoringVaultTest is Test {
             boringVault.rollOverEpoch();
             skip(extraTime[i]); // skip additional seconds after each rollover
         }
-        
+
         // At this point, the currentEpoch has advanced enough that we can distribute rewards retroactively.
         // Set up the reward distribution arrays.
         // Reward 0: For deposit token reward across epochs 0 to 1.
@@ -937,17 +939,22 @@ contract BoringVaultTest is Test {
         rewardToken2.approve(address(boringVault), 10e18);
 
         // Distribute the rewards.
-        boringVault.distributeRewards(
-            tokenArray,
-            amountArray,
-            startEpochArray,
-            endEpochArray
-        );
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
 
         // --- Check that the rewards have been transferred to the safe ---
-        assertEq(token.balanceOf(address(boringVault.boringSafe())), 60e18, "Deposit token not correctly transferred to safe");
-        assertEq(rewardToken1.balanceOf(address(boringVault.boringSafe())), 12e18, "Reward token 1 not correctly transferred to safe");
-        assertEq(rewardToken2.balanceOf(address(boringVault.boringSafe())), 10e18, "Reward token 2 not correctly transferred to safe");
+        assertEq(
+            token.balanceOf(address(boringVault.boringSafe())), 60e18, "Deposit token not correctly transferred to safe"
+        );
+        assertEq(
+            rewardToken1.balanceOf(address(boringVault.boringSafe())),
+            12e18,
+            "Reward token 1 not correctly transferred to safe"
+        );
+        assertEq(
+            rewardToken2.balanceOf(address(boringVault.boringSafe())),
+            10e18,
+            "Reward token 2 not correctly transferred to safe"
+        );
 
         // --- Additional internal consistency checks on the rewards stored in the vault ---
         // Ensure that maxRewardId is now 3.
@@ -961,8 +968,8 @@ contract BoringVaultTest is Test {
             assertEq(rStart0, 0, "Reward 0 startEpoch mismatch");
             assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
             // Retrieve epoch data for epochs 0 and 1.
-            ( , uint256 epoch0Start, uint256 epoch0End) = boringVault.epochs(0);
-            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            (, uint256 epoch0Start, uint256 epoch0End) = boringVault.epochs(0);
+            (, uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
             // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
             uint256 duration0 = (epoch0End - epoch0Start) + (epoch1End - epoch1Start);
             uint256 totalReward0 = rRate0.mulWadDown(duration0);
@@ -974,9 +981,18 @@ contract BoringVaultTest is Test {
             uint256 userReward0 = (rRate0.mulWadDown(duration0)).divWadDown(3e18);
 
             // Check that the reward has been distributed to the correct users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 20 reward 0");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 0), userReward0, 1e12, "TestUser should have 20 reward 0");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 0), userReward0, 1e12, "AnotherUser should have 20 reward 0");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 20 reward 0"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 0), userReward0, 1e12, "TestUser should have 20 reward 0"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 0),
+                userReward0,
+                1e12,
+                "AnotherUser should have 20 reward 0"
+            );
         }
 
         // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
@@ -986,8 +1002,8 @@ contract BoringVaultTest is Test {
             assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
             assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
             // Retrieve epoch data for epochs 1 and 2.
-            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
-            ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+            (, uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            (, uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
             // Total duration for reward 1 is from epoch1.startTimestamp to epoch1.endTimestamp plus epoch2 duration.
             uint256 duration1 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start);
             uint256 totalReward1 = rRate1.mulWadDown(duration1);
@@ -997,9 +1013,18 @@ contract BoringVaultTest is Test {
             uint256 userReward1 = totalReward1.divWadDown(3e18);
 
             // Check that the reward has been distributed to the correct users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 1), userReward1, 1e12, "User should have 4 reward 1");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 1), userReward1, 1e12, "TestUser should have 4 reward 1");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 1), userReward1, 1e12, "AnotherUser should have 4 reward 1");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 1), userReward1, 1e12, "User should have 4 reward 1"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 1), userReward1, 1e12, "TestUser should have 4 reward 1"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 1),
+                userReward1,
+                1e12,
+                "AnotherUser should have 4 reward 1"
+            );
         }
 
         // Reward 2: Distribution for rewardToken2 from epoch 1 to 3.
@@ -1009,9 +1034,9 @@ contract BoringVaultTest is Test {
             assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
             assertEq(rEnd2, 3, "Reward 2 endEpoch mismatch");
             // Retrieve epoch data for epochs 1 and 2.
-            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
-            ( , uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
-            ( , uint256 epoch3Start, uint256 epoch3End) = boringVault.epochs(3);
+            (, uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            (, uint256 epoch2Start, uint256 epoch2End) = boringVault.epochs(2);
+            (, uint256 epoch3Start, uint256 epoch3End) = boringVault.epochs(3);
             // Total duration for reward 2 is from epoch1.startTimestamp to epoch1.endTimestamp plus epoch2 duration plus epoch3 duration.
             uint256 duration2 = (epoch1End - epoch1Start) + (epoch2End - epoch2Start) + (epoch3End - epoch3Start);
             uint256 totalReward2 = rRate2.mulWadDown(duration2);
@@ -1021,9 +1046,18 @@ contract BoringVaultTest is Test {
             uint256 userReward2 = totalReward2.divWadDown(3e18);
 
             // Check that the reward has been distributed to the correct users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 2), userReward2, 1e12, "User should have 4 reward 2");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 2), userReward2, 1e12, "TestUser should have 4 reward 2");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 2), userReward2, 1e12, "AnotherUser should have 4 reward 2");   
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 2), userReward2, 1e12, "User should have 4 reward 2"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 2), userReward2, 1e12, "TestUser should have 4 reward 2"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 2),
+                userReward2,
+                1e12,
+                "AnotherUser should have 4 reward 2"
+            );
         }
     }
 
@@ -1044,12 +1078,7 @@ contract BoringVaultTest is Test {
         uint128[] memory endEpochArray = new uint128[](1);
         endEpochArray[0] = 0;
 
-        boringVault.distributeRewards(
-            tokenArray,
-            amountArray,
-            startEpochArray,
-            endEpochArray
-        );
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
     }
 
     function testFailDistributeRewardsEndEpochInFuture() external {
@@ -1067,12 +1096,7 @@ contract BoringVaultTest is Test {
         uint128[] memory endEpochArray = new uint128[](1);
         endEpochArray[0] = 2;
 
-        boringVault.distributeRewards(
-            tokenArray,
-            amountArray,
-            startEpochArray,
-            endEpochArray
-        );
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
     }
 
     function testSingleEpochRewardDistribution() external {
@@ -1092,7 +1116,7 @@ contract BoringVaultTest is Test {
 
         // Roll over the epoch again.
         boringVault.rollOverEpoch();
-        
+
         // At this point, the currentEpoch has advanced enough that we can distribute rewards retroactively.
         // Set up the reward distribution arrays.
         // Reward 0: For deposit token reward across epochs 0 to 1.
@@ -1114,15 +1138,14 @@ contract BoringVaultTest is Test {
         rewardToken1.approve(address(boringVault), 100e18);
 
         // Distribute the rewards.
-        boringVault.distributeRewards(
-            tokenArray,
-            amountArray,
-            startEpochArray,
-            endEpochArray
-        );
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
 
         // --- Check that the rewards have been transferred to the safe ---
-        assertEq(rewardToken1.balanceOf(address(boringVault.boringSafe())), 100e18, "Reward token 1 not correctly transferred to safe");
+        assertEq(
+            rewardToken1.balanceOf(address(boringVault.boringSafe())),
+            100e18,
+            "Reward token 1 not correctly transferred to safe"
+        );
 
         // --- Additional internal consistency checks on the rewards stored in the vault ---
         // Ensure that maxRewardId is now 3.
@@ -1136,7 +1159,7 @@ contract BoringVaultTest is Test {
             assertEq(rStart0, 1, "Reward 0 startEpoch mismatch");
             assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
             // Retrieve epoch data for epochs 1.
-            ( , uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
+            (, uint256 epoch1Start, uint256 epoch1End) = boringVault.epochs(1);
 
             // Total duration for reward 0 is from epoch0.startTimestamp to epoch0.endTimestamp plus epoch1 duration.
             uint256 duration0 = (epoch1End - epoch1Start);
@@ -1147,7 +1170,9 @@ contract BoringVaultTest is Test {
             uint256 userReward0 = (rRate0.mulWadDown(duration0));
 
             // Check that the reward has been distributed to the correct users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 100 reward 0");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 0), userReward0, 1e12, "User should have 100 reward 0"
+            );
         }
     }
 
@@ -1314,9 +1339,18 @@ contract BoringVaultTest is Test {
             assertApproxEqAbs(totalReward0, 60e18, 1e6, "Total distributed reward for reward 0 mismatch");
 
             // Check that the rewards have been distributed correctly to users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 0), expected0_owner, 1e12, "Reward0: owner mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 0), expected0_test, 1e12, "Reward0: testUser mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 0), expected0_another, 1e12, "Reward0: anotherUser mismatch");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 0), expected0_owner, 1e12, "Reward0: owner mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 0), expected0_test, 1e12, "Reward0: testUser mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 0),
+                expected0_another,
+                1e12,
+                "Reward0: anotherUser mismatch"
+            );
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -1352,9 +1386,18 @@ contract BoringVaultTest is Test {
             assertApproxEqAbs(totalReward1, 20e18, 1e6, "Total distributed reward for reward 1 mismatch");
 
             // Check that the rewards have been distributed correctly to users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 1), expected1_owner, 1e12, "Reward1: owner mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 1), expected1_test, 1e12, "Reward1: testUser mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 1), expected1_another, 1e12, "Reward1: anotherUser mismatch");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 1), expected1_owner, 1e12, "Reward1: owner mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 1), expected1_test, 1e12, "Reward1: testUser mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 1),
+                expected1_another,
+                1e12,
+                "Reward1: anotherUser mismatch"
+            );
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -1392,9 +1435,18 @@ contract BoringVaultTest is Test {
             assertApproxEqAbs(totalReward2, 30e18, 1e6, "Total distributed reward for reward 2 mismatch");
 
             // Check that the rewards have been distributed correctly to users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 2), expected2_owner, 1e12, "Reward2: owner mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 2), expected2_test, 1e12, "Reward2: testUser mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 2), expected2_another, 1e12, "Reward2: anotherUser mismatch");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 2), expected2_owner, 1e12, "Reward2: owner mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 2), expected2_test, 1e12, "Reward2: testUser mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 2),
+                expected2_another,
+                1e12,
+                "Reward2: anotherUser mismatch"
+            );
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -1423,17 +1475,25 @@ contract BoringVaultTest is Test {
             assertApproxEqAbs(totalReward3, 10e18, 1e6, "Total distributed reward for reward 3 mismatch");
 
             // Check that the rewards have been distributed correctly to users.
-            assertApproxEqAbs(boringVault.getUserRewardBalance(address(this), 3), expected3_owner, 1e12, "Reward3: owner mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(testUser, 3), expected3_test, 1e12, "Reward3: testUser mismatch");
-            assertApproxEqAbs(boringVault.getUserRewardBalance(anotherUser, 3), expected3_another, 1e12, "Reward3: anotherUser mismatch");
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(address(this), 3), expected3_owner, 1e12, "Reward3: owner mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(testUser, 3), expected3_test, 1e12, "Reward3: testUser mismatch"
+            );
+            assertApproxEqAbs(
+                boringVault.getUserRewardBalance(anotherUser, 3),
+                expected3_another,
+                1e12,
+                "Reward3: anotherUser mismatch"
+            );
         }
     }
-
 
     // /*//////////////////////////////////////////////////////////////
     //                         CLAIMS
     // //////////////////////////////////////////////////////////////*/
-    
+
     function testRewardClaiming() external {
         // ─────────────────────────────────────────────────────────────
         // SETUP: Roles and deploy additional reward tokens.
@@ -1548,19 +1608,55 @@ contract BoringVaultTest is Test {
         vm.stopPrank();
 
         // Ensure balances are correct for owner.
-        assertEq(rewardToken1.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 1), "Reward token 1 balance mismatch");
-        assertEq(rewardToken2.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 2), "Reward token 2 balance mismatch");
-        assertEq(rewardToken3.balanceOf(address(this)), boringVault.getUserRewardBalance(address(this), 3), "Reward token 3 balance mismatch");
+        assertEq(
+            rewardToken1.balanceOf(address(this)),
+            boringVault.getUserRewardBalance(address(this), 1),
+            "Reward token 1 balance mismatch"
+        );
+        assertEq(
+            rewardToken2.balanceOf(address(this)),
+            boringVault.getUserRewardBalance(address(this), 2),
+            "Reward token 2 balance mismatch"
+        );
+        assertEq(
+            rewardToken3.balanceOf(address(this)),
+            boringVault.getUserRewardBalance(address(this), 3),
+            "Reward token 3 balance mismatch"
+        );
 
         // Ensure balances are correct for testUser.
-        assertEq(rewardToken1.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 1), "Reward token 1 balance mismatch");
-        assertEq(rewardToken2.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 2), "Reward token 2 balance mismatch");
-        assertEq(rewardToken3.balanceOf(testUser), boringVault.getUserRewardBalance(testUser, 3), "Reward token 3 balance mismatch");
+        assertEq(
+            rewardToken1.balanceOf(testUser),
+            boringVault.getUserRewardBalance(testUser, 1),
+            "Reward token 1 balance mismatch"
+        );
+        assertEq(
+            rewardToken2.balanceOf(testUser),
+            boringVault.getUserRewardBalance(testUser, 2),
+            "Reward token 2 balance mismatch"
+        );
+        assertEq(
+            rewardToken3.balanceOf(testUser),
+            boringVault.getUserRewardBalance(testUser, 3),
+            "Reward token 3 balance mismatch"
+        );
 
         // Ensure balances are correct for anotherUser.
-        assertEq(rewardToken1.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 1), "Reward token 1 balance mismatch");
-        assertEq(rewardToken2.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 2), "Reward token 2 balance mismatch");
-        assertEq(rewardToken3.balanceOf(anotherUser), boringVault.getUserRewardBalance(anotherUser, 3), "Reward token 3 balance mismatch");
+        assertEq(
+            rewardToken1.balanceOf(anotherUser),
+            boringVault.getUserRewardBalance(anotherUser, 1),
+            "Reward token 1 balance mismatch"
+        );
+        assertEq(
+            rewardToken2.balanceOf(anotherUser),
+            boringVault.getUserRewardBalance(anotherUser, 2),
+            "Reward token 2 balance mismatch"
+        );
+        assertEq(
+            rewardToken3.balanceOf(anotherUser),
+            boringVault.getUserRewardBalance(anotherUser, 3),
+            "Reward token 3 balance mismatch"
+        );
     }
 
     function testComplexRewardClaiming() external {
@@ -1571,15 +1667,13 @@ contract BoringVaultTest is Test {
         MockERC20[] memory rewardTokens = new MockERC20[](numRewardTokens);
         for (uint256 i = 0; i < numRewardTokens; i++) {
             rewardTokens[i] = new MockERC20(
-                string(abi.encodePacked("Reward Token ", uint2str(i))),
-                string(abi.encodePacked("RT", uint2str(i))),
-                18
+                string(abi.encodePacked("Reward Token ", uint2str(i))), string(abi.encodePacked("RT", uint2str(i))), 18
             );
 
             // Mint the reward tokens to the test contract.
             rewardTokens[i].mint(address(this), 100e18);
         }
-        
+
         // ─────────────────────────────────────────────────────────────
         // SIMULATE MULTIPLE EPOCHS OF DEPOSITS:
         // We'll simulate 10 epochs.
@@ -1593,19 +1687,30 @@ contract BoringVaultTest is Test {
             // Skip time.
             skip(100);
 
-            // Mint the deposit amount to the user.
-            token.mint(address(this), depositAmount);
+            if (epoch % 3 == 0) {
+                // Mint the deposit amount to the user.
+                token.mint(address(this), depositAmount);
 
-            // Approve the deposit.
-            token.approve(address(boringVault), depositAmount);
+                // Approve the deposit.
+                token.approve(address(boringVault), depositAmount);
 
-            // Deposit.
-            teller.deposit(ERC20(address(token)), depositAmount, 0);
+                // Deposit.
+                teller.deposit(ERC20(address(token)), depositAmount, 0);
+            }
+
+            // // Mint the deposit amount to the user.
+            // token.mint(address(this), depositAmount);
+
+            // // Approve the deposit.
+            // token.approve(address(boringVault), depositAmount);
+
+            // // Deposit.
+            // teller.deposit(ERC20(address(token)), depositAmount, 0);
 
             // Roll over the epoch.
             boringVault.rollOverEpoch();
         }
-        
+
         // ─────────────────────────────────────────────────────────────
         // PREPARE REWARD CAMPAIGNS:
         // For each reward token, choose a campaign duration between 3 and 10 epochs.
@@ -1623,12 +1728,12 @@ contract BoringVaultTest is Test {
             if (endEpoch >= currentEpoch) {
                 endEpoch = currentEpoch - 1;
             }
-            startEpochArray[i] = uint128(startEpoch);
-            endEpochArray[i] = uint128(endEpoch);
+            startEpochArray[i] = uint128(i);
+            endEpochArray[i] = uint128(numRewardTokens + i);
             // Set reward amount: start at 1e18 and add i * 0.1e18.
             amountArray[i] = 1e18 + (i * 1e17);
         }
-        
+
         // Build tokenArray from rewardTokens.
         address[] memory tokenArray = new address[](numRewardTokens);
         for (uint256 i = 0; i < numRewardTokens; i++) {
@@ -1637,14 +1742,14 @@ contract BoringVaultTest is Test {
 
         // Ensure we are the owner.
         vm.startPrank(owner);
-        
+
         // Approve reward tokens for distribution.
         for (uint256 i = 0; i < numRewardTokens; i++) {
             rewardTokens[i].approve(address(boringVault), amountArray[i]);
         }
-        
+
         boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
-        
+
         // ─────────────────────────────────────────────────────────────
         // CLAIM REWARDS:
         // All users claim rewards for all campaigns.
@@ -1756,7 +1861,6 @@ contract BoringVaultTest is Test {
         // Get the user's eligible balance
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
-        
     }
 
     function testFindUserBalanceAtEpochExactMatch() external {
@@ -1784,7 +1888,7 @@ contract BoringVaultTest is Test {
         // Get the user's eligible balance
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
-        
+
         // Simulate time passing so that the epoch can end.
         skip(10); // Skip 10 seconds
 
@@ -1821,7 +1925,7 @@ contract BoringVaultTest is Test {
         // Get the user's eligible balance
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 100e18, "User should have 100 eligible balance");
-        
+
         // Simulate time passing so that the epoch can end.
         skip(10); // Skip 10 seconds
 
@@ -1852,7 +1956,7 @@ contract BoringVaultTest is Test {
         // Get the user's eligible balance
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 150e18, "User should have 150 eligible balance");
-        
+
         // Simulate time passing so that the epoch can end.
         skip(10); // Skip 10 seconds
 
