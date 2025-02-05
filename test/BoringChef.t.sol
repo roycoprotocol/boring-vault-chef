@@ -176,7 +176,7 @@ contract BoringVaultTest is Test {
         assertEq(recordedBalanceTest, totalShares, "TestUser recorded balance does not match vault balance.");
     }
 
-    function testFuzzMultipleDeposits(uint256 depositAmount1, uint256 depositAmount2) external {
+    function testFuzzMultipleDeposits(uint256 depositAmount1, uint256 depositAmount2) public {
         vm.assume(1e30 > depositAmount1 && depositAmount1 > 1e18);
         vm.assume(1e30 > depositAmount2 && depositAmount2 > 1e18);
 
@@ -1654,6 +1654,45 @@ contract BoringVaultTest is Test {
         }
 
         // Claim rewards for the test contract.
+        boringVault.claimRewards(rewardIds);
+    }
+
+    function testFailClaimRewardsAlreadyClaimed() external {
+        // Just deposit some tokens.
+        testFuzzMultipleDeposits(100e18, 100e18);
+
+        // Mint and prepare to distribute rewards.
+        token.mint(address(this), 100e18);
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
+
+        // It's currently epoch 1, let's roll it over.
+        skip(100);
+        boringVault.rollOverEpoch();
+
+        // Distribute rewards.
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
+
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
+
+        uint128[] memory startEpochArray = new uint128[](1);
+        startEpochArray[0] = 1;
+
+        uint128[] memory endEpochArray = new uint128[](1);
+        endEpochArray[0] = 1;
+
+        // Distribute rewards.
+        token.approve(address(boringVault), 100e18);
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+
+        // Claim rewards.
+        uint256[] memory rewardIds = new uint256[](1);
+        rewardIds[0] = 0;
+        boringVault.claimRewards(rewardIds);
+
+        // // Try to claim rewards again.
         boringVault.claimRewards(rewardIds);
     }
 
