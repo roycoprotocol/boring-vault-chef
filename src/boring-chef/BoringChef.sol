@@ -99,7 +99,7 @@ contract BoringChef is Auth, ERC20 {
     uint256 public maxRewardId;
 
     /// @dev Maps users to a boolean indicating if they have disabled reward accrual
-    mapping(address user => bool isDisabled) public addressToIsDisabled; 
+    mapping(address user => bool isDisabled) public addressToIsDisabled;
 
     /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
@@ -146,6 +146,12 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Can only be called by an authorized address.
     function rollOverEpoch() external requiresAuth {
         _rollOverEpoch();
+    }
+
+    /// @notice Roll over to the next epoch.
+    /// @dev Can only be called by an authorized address.
+    function getBalanceUpdates(address user) external view returns (BalanceUpdate[] memory) {
+        return balanceUpdates[user];
     }
 
     /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
@@ -373,8 +379,7 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Increase the user's share balance for the next epoch
     function _increaseUpcomingEpochParticipation(address user, uint128 amount) internal {
-
-        // Skip participation accounting if the it has been disabled for this address
+        // Skip participation accounting if it has been disabled for this address
         if (addressToIsDisabled[user]) {
             return;
         }
@@ -414,8 +419,7 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Decrease the user's share balance for the current epoch by withdrawing from
     ///         deposits from the latest eligible epoch down to the current epoch.
     function _decreaseCurrentEpochParticipation(address user, uint128 amount) internal {
-
-        // Skip participation accounting if the it has been disabled for this address
+        // Skip participation accounting if it has been disabled for this address
         if (addressToIsDisabled[user]) {
             return;
         }
@@ -448,7 +452,7 @@ contract BoringChef is Auth, ERC20 {
             if (userBalanceUpdates.length == 1) {
                 lastBalanceUpdate.totalSharesBalance = userBalance;
                 // Account for withdrawal for the current epoch
-                epochs[targetEpoch].eligibleShares -= amount;
+                epochs[lastBalanceUpdate.epoch].eligibleShares -= amount;
                 // Case: Last balance change for next epoch and second to last balance change can be for current epoch or previous ones
             } else {
                 // Get second last balance update

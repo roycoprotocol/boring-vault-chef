@@ -197,7 +197,7 @@ contract BoringChefTest is Test {
 
         // Approve teller to spend the total deposit amount.
         token.approve(address(boringVault), depositAmount1 + depositAmount2);
-        
+
         // =========================================
         // ================ First deposit. ================
         // =========================================
@@ -210,7 +210,7 @@ contract BoringChefTest is Test {
         assertEq(recordedBalanceTest, depositAmount1, "TestUser recorded balance does not match vault balance.");
 
         // Vault Eligible Shares
-        (uint256 vaultEligibleShares, , ) = boringVault.epochs(boringVault.currentEpoch() + 1);
+        (uint256 vaultEligibleShares,,) = boringVault.epochs(boringVault.currentEpoch() + 1);
 
         // Check the user's and vault's eligible balance.
         assertEq(boringVault.getUserEligibleBalance(address(this)), 0, "TestUser eligible balance should be 0.");
@@ -228,16 +228,24 @@ contract BoringChefTest is Test {
         // Check the user's balance update record.
         // The second deposit should have occurred in the same epoch as the first deposit.
         assertEq(recordedEpochTest2, boringVault.currentEpoch() + 1, "TestUser balance update epoch is not correct.");
-        assertEq(recordedBalanceTest2, depositAmount1 + depositAmount2, "TestUser recorded balance does not match vault balance.");
+        assertEq(
+            recordedBalanceTest2,
+            depositAmount1 + depositAmount2,
+            "TestUser recorded balance does not match vault balance."
+        );
 
         // Roll over to the next epoch.
         boringVault.rollOverEpoch();
 
         // Vault Eligible Shares
-        (uint256 vaultEligibleShares2, , ) = boringVault.epochs(boringVault.currentEpoch());
+        (uint256 vaultEligibleShares2,,) = boringVault.epochs(boringVault.currentEpoch());
 
         // Check the user's and vault's eligible balance.
-        assertEq(boringVault.getUserEligibleBalance(address(this)), depositAmount1 + depositAmount2, "TestUser eligible balance is not correct.");
+        assertEq(
+            boringVault.getUserEligibleBalance(address(this)),
+            depositAmount1 + depositAmount2,
+            "TestUser eligible balance is not correct."
+        );
         assertEq(vaultEligibleShares2, depositAmount1 + depositAmount2, "Vault eligible balance is not correct.");
 
         // --- Check vault share balances ---
@@ -262,21 +270,25 @@ contract BoringChefTest is Test {
         teller.deposit(ERC20(address(token)), depositAmount1, 0);
 
         // Check that there is one balance update record.
-        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 1, "Should have 1 balance update after first deposit");
+        assertEq(
+            boringVault.getTotalBalanceUpdates(address(this)), 1, "Should have 1 balance update after first deposit"
+        );
         (uint256 firstRecordEpoch, uint256 firstRecordBalance) = boringVault.balanceUpdates(address(this), 0);
         // Expect that the record is for currentEpoch + 1 and equals depositAmount1.
         assertEq(firstRecordEpoch, boringVault.currentEpoch() + 1, "First record epoch should be currentEpoch+1");
         assertEq(firstRecordBalance, depositAmount1, "First record balance should equal depositAmount1");
 
         // Check that, before rollover, eligible balance is still 0.
-        assertEq(boringVault.getUserEligibleBalance(address(this)), 0, "Eligible balance should be 0 before epoch rollover");
+        assertEq(
+            boringVault.getUserEligibleBalance(address(this)), 0, "Eligible balance should be 0 before epoch rollover"
+        );
 
         // Also, the upcoming epoch’s eligible shares (currentEpoch+1) should equal depositAmount1.
-        (uint256 upcomingEligible1, , ) = boringVault.epochs(boringVault.currentEpoch() + 1);
+        (uint256 upcomingEligible1,,) = boringVault.epochs(boringVault.currentEpoch() + 1);
         assertEq(upcomingEligible1, depositAmount1, "Upcoming epoch eligible shares mismatch after first deposit");
 
         // -------- Rollover Epoch after first deposit --------
-        boringVault.rollOverEpoch(); 
+        boringVault.rollOverEpoch();
         // Now currentEpoch increments (if it was X, now currentEpoch == X+1).
 
         // -------- Second Deposit (in a new epoch) --------
@@ -294,21 +306,24 @@ contract BoringChefTest is Test {
         assertEq(recordBalance1, depositAmount1, "First record balance should equal depositAmount1");
         // The second record should now be for the new upcoming epoch (currentEpoch+1) and reflect the cumulative deposit.
         assertEq(recordEpoch2, boringVault.currentEpoch() + 1, "Second record epoch should be currentEpoch+1");
-        assertEq(recordBalance2, depositAmount1 + depositAmount2, "Second record balance should be the sum of both deposits");
+        assertEq(
+            recordBalance2, depositAmount1 + depositAmount2, "Second record balance should be the sum of both deposits"
+        );
 
         // -------- Rollover Again to Activate the Deposits --------
-        boringVault.rollOverEpoch(); 
+        boringVault.rollOverEpoch();
         // Now the deposits become eligible. Current epoch has increased by one.
 
         // Check that the user's eligible balance equals the total deposited.
         uint256 userEligible = boringVault.getUserEligibleBalance(address(this));
-        assertEq(userEligible, depositAmount1 + depositAmount2, "Eligible balance should equal total deposits after rollover");
+        assertEq(
+            userEligible, depositAmount1 + depositAmount2, "Eligible balance should equal total deposits after rollover"
+        );
 
         // Finally, check the vault share balance (should equal the total deposited, given 1:1 rate).
         uint256 totalShares = boringVault.balanceOf(address(this));
         assertEq(totalShares, depositAmount1 + depositAmount2, "Total vault shares should equal the sum of deposits");
     }
-
 
     function test_WithdrawPartial() external {
         // Define deposit and withdrawal amounts.
@@ -448,8 +463,8 @@ contract BoringChefTest is Test {
         uint256 eligibleShares = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleShares, withdrawAmount, "Eligible shares are incorrect.");
 
-        // Validate the user's eligible balance. 
-        (uint256 eligibleBefore, ,) = boringVault.epochs(boringVault.currentEpoch());
+        // Validate the user's eligible balance.
+        (uint256 eligibleBefore,,) = boringVault.epochs(boringVault.currentEpoch());
         assertEq(eligibleBefore, withdrawAmount, "Eligible shares are incorrect.");
 
         // Call bulkWithdraw on the teller.
@@ -459,8 +474,8 @@ contract BoringChefTest is Test {
         // Under a 1:1 rate, assetsReceived should equal withdrawAmount.
         assertEq(assetsReceived, withdrawAmount, "Assets received should equal withdrawn shares");
 
-        // Validate the user's eligible balance. 
-        (uint256 eligibleAfter, ,) = boringVault.epochs(boringVault.currentEpoch());
+        // Validate the user's eligible balance.
+        (uint256 eligibleAfter,,) = boringVault.epochs(boringVault.currentEpoch());
         assertEq(eligibleAfter, 0, "Eligible shares are incorrect.");
 
         // Validate the user's vault share balance.
@@ -496,7 +511,6 @@ contract BoringChefTest is Test {
         (uint256 recEpoch1, uint256 recBalance1) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch1, boringVault.currentEpoch(), "First update epoch should be currentEpoch");
         assertEq(recBalance1, withdrawAmount, "First update balance mismatch");
-        
 
         // ─────────────────────────────────────────────────────────────
         // PHASE 2: Deposit in a later epoch
@@ -572,7 +586,6 @@ contract BoringChefTest is Test {
         assertEq(finalEligible, 0, "Final eligible balance should be zero");
     }
 
-
     function testFail_WithdrawExceedingBalance() external {
         // Define deposit and withdrawal amounts.
         uint256 depositAmount = 100e18;
@@ -594,19 +607,23 @@ contract BoringChefTest is Test {
     }
 
     // No current update, no upcoming update.
-    function testFuzz_Deposit_RollOverMultipleEpochs_Withdraw(uint256 depositAmount, uint256 withdrawAmount, uint256 numEpochs) external {
+    function testFuzz_Deposit_RollOverMultipleEpochs_Withdraw(
+        uint256 depositAmount,
+        uint256 withdrawAmount,
+        uint256 numEpochs
+    ) external {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
         vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
         vm.assume(depositAmount > withdrawAmount);
-        
+
         // Set our number of epochs to roll over (between 2 and 4).
         uint256 epochs = numEpochs % 3 + 2;
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
         token.mint(address(this), depositAmount);
         token.approve(address(boringVault), depositAmount);
-        
+
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
@@ -624,7 +641,11 @@ contract BoringChefTest is Test {
 
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        assertEq(recBalance, depositAmount - withdrawAmount, "Balance update balance should be depositAmount - withdrawAmount");
+        assertEq(
+            recBalance,
+            depositAmount - withdrawAmount,
+            "Balance update balance should be depositAmount - withdrawAmount"
+        );
     }
 
     // Current update, no upcoming update.
@@ -637,7 +658,7 @@ contract BoringChefTest is Test {
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
         token.mint(address(this), depositAmount);
         token.approve(address(boringVault), depositAmount);
-        
+
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
@@ -653,11 +674,15 @@ contract BoringChefTest is Test {
 
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        assertEq(recBalance, depositAmount - withdrawAmount, "Balance update balance should be depositAmount - withdrawAmount");
+        assertEq(
+            recBalance,
+            depositAmount - withdrawAmount,
+            "Balance update balance should be depositAmount - withdrawAmount"
+        );
     }
-    
+
     // No current update, upcoming update.
-    function testFuzz_DepositWithdraw_SameEpoch(uint256 amount) external {
+    function testFuzz_DepositWithdraw_SameEpoch_UpcomingUpdate(uint256 amount) external {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(amount > 1e18 && amount < 1e30);
 
@@ -665,24 +690,30 @@ contract BoringChefTest is Test {
         token.mint(address(this), amount);
         token.approve(address(boringVault), amount);
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), amount, 0);
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // Check the balanceUpdates record.
         // We should be updating the next epoch's eligibleBalance.
-        // We should have only a single balance update record, since this was our first action. 
+        // We should have only a single balance update record, since this was our first action.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 1, "Balance updates record is incorrect.");
-        
+
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
         assertEq(recBalance, amount, "Balance update balance should match deposit amount");
 
-        // Withdraw the tokens from the vault. 
+        // Withdraw the tokens from the vault.
         // NOTE: we haven't rolled over the epoch yet, so the balanceUpdates record length should not change.
         teller.bulkWithdraw(ERC20(address(token)), amount / 2, 0, address(this));
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // Check the balanceUpdates record.
-        // We should have only a single balance update record, since we only had one before. 
+        // We should have only a single balance update record, since we only had one before.
         // However, since our eligibleBalance was all in the next epoch, we need to update the next epoch and nothing else.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 1, "Balance updates record is incorrect.");
 
@@ -692,18 +723,24 @@ contract BoringChefTest is Test {
     }
 
     // No current update, upcoming update.
-    function testFuzz_DepositWithdraw_SameEpoch_ExistingBalance(uint256 depositAmount, uint256 withdrawAmount) external {
+    function testFuzz_DepositWithdraw_SameEpoch_ExistingBalance(uint256 depositAmount, uint256 withdrawAmount)
+        external
+    {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
         vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
-        vm.assume(depositAmount*2 > withdrawAmount);
+        vm.assume(depositAmount > withdrawAmount);
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
-        token.mint(address(this), depositAmount*2);
-        token.approve(address(boringVault), depositAmount*2);
+        token.mint(address(this), depositAmount * 2);
+        token.approve(address(boringVault), depositAmount * 2);
+
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // Roll over a few epochs.
         for (uint256 i = 0; i < 10; i++) {
@@ -713,39 +750,51 @@ contract BoringChefTest is Test {
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // Check the balanceUpdates record.
         // We should be updating the next epoch's eligibleBalance.
-        // We should have only a single balance update record, since this was our first action. 
+        // We should have only a single balance update record, since this was our first action.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
-        
+
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
-        assertEq(recBalance, depositAmount*2, "Balance update balance should match deposit amounts");
+        assertEq(recBalance, depositAmount * 2, "Balance update balance should match deposit amounts");
 
-        // Withdraw the tokens from the vault. 
+        // Withdraw the tokens from the vault.
         // NOTE: we haven't rolled over the epoch yet.
         teller.bulkWithdraw(ERC20(address(token)), withdrawAmount, 0, address(this));
+
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // Check the balanceUpdates record.
         // We should now have 3 balance updates, since we have 2 deposits and 1 withdrawal.
         // The first should be the initial deposit and it should remain the same as before.
         // The second should be this withdrawal and it should be in the current epoch.
         // The eligibleBalance should be deposit1 - withdraw1.
-        // The third one should be the second deposit and it should be in the next epoch. 
+        // The third one should be the second deposit and it should be in the next epoch.
         // The eligibleBalance should be (deposit1+deposit2) - withdraw1.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 3, "Balance updates record is incorrect.");
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch2, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        if(withdrawAmount > depositAmount) {
+        if (withdrawAmount > depositAmount) {
             assertEq(recBalance2, 0, "Balance update balance should be 0");
         } else {
-            assertEq(recBalance2, depositAmount - withdrawAmount, "Balance update balance should be depositAmount - withdrawAmount");
+            assertEq(
+                recBalance2,
+                depositAmount - withdrawAmount,
+                "Balance update balance should be depositAmount - withdrawAmount"
+            );
         }
 
         (uint256 recEpoch3, uint256 recBalance3) = boringVault.balanceUpdates(address(this), 2);
         assertEq(recEpoch3, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
-        assertEq(recBalance3, depositAmount*2 - withdrawAmount, "Balance update balance should be depositAmount*2 - withdrawAmount");
+        assertEq(
+            recBalance3,
+            depositAmount * 2 - withdrawAmount,
+            "Balance update balance should be depositAmount*2 - withdrawAmount"
+        );
     }
 
     // Current update, upcoming update.
@@ -753,11 +802,11 @@ contract BoringChefTest is Test {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
         vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
-        vm.assume(depositAmount*2 > withdrawAmount && depositAmount < withdrawAmount);
+        vm.assume(depositAmount * 2 > withdrawAmount && depositAmount < withdrawAmount);
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
-        token.mint(address(this), depositAmount*2);
-        token.approve(address(boringVault), depositAmount*2);
+        token.mint(address(this), depositAmount * 2);
+        token.approve(address(boringVault), depositAmount * 2);
 
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
@@ -773,9 +822,9 @@ contract BoringChefTest is Test {
 
         // Withdraw the tokens from the vault.
         teller.bulkWithdraw(ERC20(address(token)), withdrawAmount, 0, address(this));
-        
+
         // We should have 2 balance updates, one for the initial deposit and one for the second deposit.
-        // The withdrawal should have subtracted from the eligibleBalance in the next epoch and the previous epoch 
+        // The withdrawal should have subtracted from the eligibleBalance in the next epoch and the previous epoch
         // if necessary.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
 
@@ -786,7 +835,11 @@ contract BoringChefTest is Test {
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
-        assertEq(recBalance2, depositAmount*2 - withdrawAmount, "Balance update balance should be depositAmount*2 - withdrawAmount");
+        assertEq(
+            recBalance2,
+            depositAmount * 2 - withdrawAmount,
+            "Balance update balance should be depositAmount*2 - withdrawAmount"
+        );
     }
 
     // Fuzz test that randomly deposits, withdraws, and rolls over epochs.
@@ -794,33 +847,35 @@ contract BoringChefTest is Test {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
         vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
-        vm.assume(depositAmount > withdrawAmount || (depositAmount*2 > withdrawAmount && depositAmount < withdrawAmount));
+        vm.assume(
+            depositAmount > withdrawAmount || (depositAmount * 2 > withdrawAmount && depositAmount < withdrawAmount)
+        );
 
         // Set iteration count.
         uint256 iterations = seed % 64 + 1;
         uint256 lastDecision;
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
-        token.mint(address(this), depositAmount*64);
-        
+        token.mint(address(this), depositAmount * 64);
+
         // Deposit the tokens into the vault.
         // We do this to ensure that the vault has a balance before we start withdrawing.
-        token.approve(address(boringVault), depositAmount*2);
-        teller.deposit(ERC20(address(token)), depositAmount*2, 0);
+        token.approve(address(boringVault), depositAmount * 2);
+        teller.deposit(ERC20(address(token)), depositAmount * 2, 0);
 
         // Roll over the epochs.
         for (uint256 i = 0; i < iterations; i++) {
             seed = uint256(keccak256(abi.encodePacked(seed, i)));
             uint256 decision = seed % 3;
-            if(decision == 0) {
+            if (decision == 0) {
                 // Deposit.
                 token.approve(address(boringVault), depositAmount);
                 teller.deposit(ERC20(address(token)), depositAmount, 0);
-            } else if(decision == 1) {
+            } else if (decision == 1) {
                 boringVault.rollOverEpoch();
 
                 // Withdraw if we have enough balance.
-                if(boringVault.balanceOf(address(this)) > withdrawAmount) {
+                if (boringVault.balanceOf(address(this)) > withdrawAmount) {
                     teller.bulkWithdraw(ERC20(address(token)), withdrawAmount, 0, address(this));
                 }
             } else {
@@ -840,7 +895,7 @@ contract BoringChefTest is Test {
         // Define amounts.
         vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
         vm.assume(transferShares > 1e18 && transferShares < 1e30);
-        vm.assume(depositAmount > transferShares*2);
+        vm.assume(depositAmount > transferShares * 2);
 
         // Mint Approve BoringVault for depositAmount tokens.
         token.mint(address(this), depositAmount);
@@ -883,7 +938,11 @@ contract BoringChefTest is Test {
         // Check the balanceUpdates record for address(this).
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        assertEq(recBalance, depositAmount - transferShares, "Balance update balance should be depositAmount - transferShares");
+        assertEq(
+            recBalance,
+            depositAmount - transferShares,
+            "Balance update balance should be depositAmount - transferShares"
+        );
 
         // Check the balanceUpdates record for anotherUser.
         // They should have 2 balance updates, for the transfer and the initial deposit.
@@ -904,8 +963,11 @@ contract BoringChefTest is Test {
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
         (uint256 recEpoch3, uint256 recBalance3) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch3, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        assertEq(recBalance3, depositAmount - (2*transferShares), "Balance update balance should be depositAmount - transferShares");
-
+        assertEq(
+            recBalance3,
+            depositAmount - (2 * transferShares),
+            "Balance update balance should be depositAmount - transferShares"
+        );
     }
 
     function testFailTransferExceedingBalance() external {
@@ -2193,8 +2255,18 @@ contract BoringChefTest is Test {
         // boringVault.blacklistUser(address(this));
 
         // Try to deposit.
-        
-        
-        
+    }
+
+    function testPrintBalanceUpdates(BoringChef.BalanceUpdate[] memory updates) public view {
+        // Print a header
+        console.log("Balance Updates:");
+        // Loop through and print each update.
+        for (uint256 i = 0; i < updates.length; i++) {
+            console.log("================================");
+            console.log("Update Index:", i);
+            console.log("  Epoch:         ", uint256(updates[i].epoch));
+            console.log("  Total Shares:  ", uint256(updates[i].totalSharesBalance));
+        }
+        console.log("================================");
     }
 }
