@@ -400,13 +400,13 @@ contract BoringChef is Auth, ERC20 {
         // If withdrawing, balance updates must have a non-zero length
         BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
         // Ensure no duplicate entries
+        // Case: A new deposit has not been made for the upcoming epoch
         if (lastBalanceUpdate.epoch <= targetEpoch) {
-            // Case: A new deposit has not been made for the upcoming epoch
+            // Case: Last balance change was for the same epoch. Modify the last entry.
             if (lastBalanceUpdate.epoch == targetEpoch) {
-                // Case: Last balance change was for the same epoch. Modify the last entry.
                 lastBalanceUpdate.totalSharesBalance = userBalance;
-            } else {
                 // Case: Last balance change was for a past epoch. Make a new entry.
+            } else {
                 userBalanceUpdates.push(BalanceUpdate({epoch: targetEpoch, totalSharesBalance: userBalance}));
             }
             // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
@@ -417,23 +417,25 @@ contract BoringChef is Auth, ERC20 {
             // Case: A new deposit has been made for the upcoming epoch
             uint128 epoch = lastBalanceUpdate.epoch;
 
+            // Case: Last balance change was the only deposit or last balance change was in between second to last epoch and latest
             if (balanceUpdates.length == 1) {
-                // Case: Last balance change was for the same epoch. Modify the last entry.
                 lastBalanceUpdate.totalSharesBalance = userBalance;
+                // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
+                Epoch storage epochData = epochs[targetEpoch];
+                // Account for withdrawal for the specified epoch
+                epochData.eligibleShares -= amount;
+            } else {
+                BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 2];
             }
-
-            lastBalanceUpdate.epoch = userBalance;
-            lastBalanceUpdate.totalSharesBalance = userBalance;
 
             if (balanceUpdates.length == 1 || balanceupdates[curr - 1] != currentEpoch) {
                 // replace lastBalanceUpdate with balanceOf
                 // push cached lastBalanceUpdate into array (and update)
-            } else { // previousBalance != currentEpoch and there exists 2 or more array elements
+            } else { // previousBalance == currentEpoch and there exists 2 or more array elements
                     // update previousBalanceUpdate
                     // update currentBalanceUpdate
             }
 
-            BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 2];
             if (secondLastBalanceUpdate.epoch < targetEpoch) {
                 // Case: Second to last balance change was for a past epoch. Last balance change was for a future epoch. Insert a new entry in between.
             } else if (secondLastBalanceUpdate.epoch == targetEpoch) {
