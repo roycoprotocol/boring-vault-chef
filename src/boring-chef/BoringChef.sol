@@ -98,6 +98,9 @@ contract BoringChef is Auth, ERC20 {
     mapping(uint256 rewardId => Reward) public rewards;
     uint256 public maxRewardId;
 
+    /// @dev Maps users to a boolean indicating if they have disabled reward accrual
+    mapping(address user => bool isDisabled) public addressToIsDisabled; 
+
     /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
     /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardId in that bucket (monotonically increasing) has been claimed.
@@ -124,6 +127,20 @@ contract BoringChef is Auth, ERC20 {
     /*//////////////////////////////////////////////////////////////
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Disable reward accrual for a given address
+    /// @dev Can only be called by an authorized address
+    function disableRewardAccrual(address user) external requiresAuth {
+        _decreaseCurrentEpochParticipation(user, uint128(balanceOf[user]));
+        addressToIsDisabled[user] = true;
+    }
+
+    /// @notice Enable reward accrual for a given address
+    /// @dev Can only be called by an authorized address
+    function enableRewardAccrual(address user) external requiresAuth {
+        addressToIsDisabled[user] = false;
+        _increaseUpcomingEpochParticipation(user, uint128(balanceOf[user]));
+    }
 
     /// @notice Roll over to the next epoch.
     /// @dev Can only be called by an authorized address.
@@ -356,6 +373,12 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Increase the user's share balance for the next epoch
     function _increaseUpcomingEpochParticipation(address user, uint128 amount) internal {
+
+        // Skip participation accounting if the it has been disabled for this address
+        if (addressToIsDisabled[user]) {
+            return;
+        }
+
         // Cache upcoming epoch for gas op
         uint128 targetEpoch = currentEpoch + 1;
 
@@ -391,6 +414,12 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Decrease the user's share balance for the current epoch by withdrawing from
     ///         deposits from the latest eligible epoch down to the current epoch.
     function _decreaseCurrentEpochParticipation(address user, uint128 amount) internal {
+
+        // Skip participation accounting if the it has been disabled for this address
+        if (addressToIsDisabled[user]) {
+            return;
+        }
+
         // Cache the current epoch for gas efficiency.
         uint128 targetEpoch = currentEpoch;
 
