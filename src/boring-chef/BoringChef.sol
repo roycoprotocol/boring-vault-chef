@@ -380,9 +380,7 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Increase the user's share balance for the next epoch
     function _increaseUpcomingEpochParticipation(address user, uint128 amount) internal {
         // Skip participation accounting if it has been disabled for this address
-        if (addressToIsDisabled[user]) {
-            return;
-        }
+        if (addressToIsDisabled[user]) return;
 
         // Cache upcoming epoch for gas op
         uint128 targetEpoch = currentEpoch + 1;
@@ -419,81 +417,77 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Decrease the user's share balance for the current epoch by withdrawing from
     ///         deposits from the latest eligible epoch down to the current epoch.
     function _decreaseCurrentEpochParticipation(address user, uint128 amount) internal {
-        // Skip participation accounting if it has been disabled for this address
-        if (addressToIsDisabled[user]) {
+        // Skip participation accounting if it has been disabled for this address.
+        if (addressToIsDisabled[user]) return;
+
+        // Cache the current epoch and user's balance.
+        uint128 targetEpoch = currentEpoch;
+        uint128 userBalance = uint128(balanceOf[user]);
+
+        // Cache the user's balance updates and its length.
+        BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
+        uint256 balanceUpdatesLength = userBalanceUpdates.length;
+        // It is assumed that len > 0 when withdrawing.
+        BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[balanceUpdatesLength - 1];
+
+        // CASE 1: No deposit for the upcoming epoch.
+        if (lastBalanceUpdate.epoch <= targetEpoch) {
+            // CASE 1.1: Last balance update is for the current epoch
+            if (lastBalanceUpdate.epoch == targetEpoch) {
+                // If already updated for the current epoch, just update the total shares.
+                lastBalanceUpdate.totalSharesBalance = userBalance;
+                // CASE 1.2: Last balance update is a previous epoch
+            } else {
+                // Otherwise, append a new update for the current epoch.
+                userBalanceUpdates.push(BalanceUpdate({epoch: targetEpoch, totalSharesBalance: userBalance}));
+            }
+            // Account for withdrawal in the current epoch.
+            epochs[targetEpoch].eligibleShares -= amount;
+            // Emit event for this withdrawal
+            emit UserWithdrawnFromEpoch(user, targetEpoch, amount);
             return;
         }
 
-        // Cache the current epoch for gas efficiency.
-        uint128 targetEpoch = currentEpoch;
+        // CASE 2: A deposit has been made for a future epoch.
+        // If there is only one balance update, it has to be for the next epoch. Update it and adjust the epoch's eligible shares.
+        if (balanceUpdatesLength == 1) {
+            targetEpoch = lastBalanceUpdate.epoch;
+            lastBalanceUpdate.totalSharesBalance = userBalance;
+            epochs[targetEpoch].eligibleShares -= amount;
+            // Emit event for this withdrawal
+            emit UserWithdrawnFromEpoch(user, targetEpoch, amount);
+            return;
+        }
 
-        // Get the user's balance updates (assumed to be sorted in increasing order by epoch).
-        BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
-        uint128 userBalance = uint128(balanceOf[user]);
-        // If withdrawing, balance updates must have a non-zero length
-        BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
-        // Ensure no duplicate entries
-        // Case: A new deposit has not been made for the upcoming epoch
-        if (lastBalanceUpdate.epoch <= targetEpoch) {
-            // Case: Last balance change was for the same epoch. Modify the last entry.
-            if (lastBalanceUpdate.epoch == targetEpoch) {
+        // Otherwise, get the second-to-last update.
+        BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[balanceUpdatesLength - 2];
+        uint128 balanceDifference;
+        balanceDifference = lastBalanceUpdate.totalSharesBalance - secondLastBalanceUpdate.totalSharesBalance;
+
+        if (amount > balanceDifference) {
+            // When the full withdrawal amount cannot be removed solely from the last update.
+            if (secondLastBalanceUpdate.epoch == targetEpoch) {
+                // Modify the second-to-last entry if it already corresponds to the current epoch.
                 lastBalanceUpdate.totalSharesBalance = userBalance;
-                // Case: Last balance change was for a past epoch. Make a new entry.
-            } else {
-                userBalanceUpdates.push(BalanceUpdate({epoch: targetEpoch, totalSharesBalance: userBalance}));
-            }
-            // Get the epoch data for the current epoch and next epoch (epoch to deposit for)
-            Epoch storage epochData = epochs[targetEpoch];
-            // Account for withdrawal for the specified epoch
-            epochData.eligibleShares -= amount;
-        } else {
-            // Case: A new deposit has been made for the upcoming epoch
-            // Case: Last balance change was the only deposit and the deposit is guarranteed to be for the next epoch
-            if (userBalanceUpdates.length == 1) {
-                lastBalanceUpdate.totalSharesBalance = userBalance;
-                // Account for withdrawal for the current epoch
+                secondLastBalanceUpdate.totalSharesBalance -= balanceDifference;
                 epochs[lastBalanceUpdate.epoch].eligibleShares -= amount;
-                // Case: Last balance change for next epoch and second to last balance change can be for current epoch or previous ones
+                epochs[targetEpoch].eligibleShares -= balanceDifference;
             } else {
-                // Get second last balance update
-                BalanceUpdate storage secondLastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 2];
-                uint128 balanceDifference =
-                    lastBalanceUpdate.totalSharesBalance - secondLastBalanceUpdate.totalSharesBalance;
-                // If full amount to withdraw can't be withdrawn from the last update either modify or insert
-                if (amount > balanceDifference) {
-                    // If full amount to withdraw can't be withdrawn from the last update, and entry exists, then modify
-                    if (secondLastBalanceUpdate.epoch == targetEpoch) {
-                        // Withdraw whatever you can from the next epoch
-                        lastBalanceUpdate.totalSharesBalance = userBalance;
-                        // Withdraw whatever you can from the current epoch
-                        secondLastBalanceUpdate.totalSharesBalance -= balanceDifference;
-                        // Account for withdrawal for the next epoch
-                        epochs[lastBalanceUpdate.epoch].eligibleShares -= amount;
-                        // Account for withdrawal for the current epoch
-                        epochs[targetEpoch].eligibleShares -= balanceDifference;
-                        // If full amount to withdraw can't be withdrawn from the last update, and entry doesn't exist, then insert a new update
-                    } else {
-                        BalanceUpdate memory nextEpochUpdate = lastBalanceUpdate;
-                        // Update the last entry to be for the current epoch (insertion)
-                        lastBalanceUpdate.epoch = targetEpoch;
-                        lastBalanceUpdate.totalSharesBalance = userBalance;
-                        // Decrease shares of future epoch by amount withdrawn
-                        nextEpochUpdate.totalSharesBalance -= amount;
-                        // Append to user balance updates array to complete insertion
-                        userBalanceUpdates.push(nextEpochUpdate);
-                        // Withdraw whatever you can from the next epoch
-                        epochs[targetEpoch + 1].eligibleShares -= amount;
-                        // Account for withdrawal for the current epoch
-                        epochs[targetEpoch].eligibleShares -= balanceDifference;
-                    }
-                    // If full amount to withdraw can be withdrawn from the next epoch, modify the entry
-                } else {
-                    // Withdraw full amount from next epoch
-                    lastBalanceUpdate.totalSharesBalance -= amount;
-                    // Account for withdrawal for the specified epoch
-                    epochs[lastBalanceUpdate.epoch].eligibleShares -= amount;
-                }
+                // Otherwise, insert a new balance update entry.
+                BalanceUpdate memory nextEpochUpdate = lastBalanceUpdate;
+                // Update the last entry to be for the current epoch.
+                lastBalanceUpdate.epoch = targetEpoch;
+                lastBalanceUpdate.totalSharesBalance = userBalance;
+                // Update the last entry to be for the current epoch.
+                nextEpochUpdate.totalSharesBalance -= amount;
+                userBalanceUpdates.push(nextEpochUpdate);
+                epochs[targetEpoch + 1].eligibleShares -= amount;
+                epochs[targetEpoch].eligibleShares -= balanceDifference;
             }
+        } else {
+            // CASE 3: The full amount can be withdrawn from the next epoch update.
+            lastBalanceUpdate.totalSharesBalance -= amount;
+            epochs[lastBalanceUpdate.epoch].eligibleShares -= amount;
         }
     }
 
