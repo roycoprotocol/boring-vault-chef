@@ -808,8 +808,12 @@ contract BoringChefTest is Test {
         token.mint(address(this), depositAmount * 2);
         token.approve(address(boringVault), depositAmount * 2);
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
+
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // Roll over the epoch.
         boringVault.rollOverEpoch();
@@ -817,11 +821,15 @@ contract BoringChefTest is Test {
         // Deposit the tokens into the vault.
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
+
         // We should have 2 balance updates, one for the initial deposit and one for the second deposit.
         assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
 
         // Withdraw the tokens from the vault.
         teller.bulkWithdraw(ERC20(address(token)), withdrawAmount, 0, address(this));
+
+        testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // We should have 2 balance updates, one for the initial deposit and one for the second deposit.
         // The withdrawal should have subtracted from the eligibleBalance in the next epoch and the previous epoch
