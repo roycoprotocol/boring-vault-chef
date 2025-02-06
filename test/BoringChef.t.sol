@@ -789,6 +789,49 @@ contract BoringChefTest is Test {
         assertEq(recBalance2, depositAmount*2 - withdrawAmount, "Balance update balance should be depositAmount*2 - withdrawAmount");
     }
 
+    // Fuzz test that randomly deposits, withdraws, and rolls over epochs.
+    function testFuzz_DepositWithdraw_Random(uint256 depositAmount, uint256 withdrawAmount, uint256 seed) external {
+        // Assume deposit and withdraw amounts are between 1e18 and 1e30.
+        vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
+        vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
+        vm.assume(depositAmount > withdrawAmount || (depositAmount*2 > withdrawAmount && depositAmount < withdrawAmount));
+
+        // Set iteration count.
+        uint256 iterations = seed % 64 + 1;
+        uint256 lastDecision;
+
+        // Mint the tokens to this contract. Aprove it for the withdraw amount.
+        token.mint(address(this), depositAmount*64);
+        
+        // Deposit the tokens into the vault.
+        // We do this to ensure that the vault has a balance before we start withdrawing.
+        token.approve(address(boringVault), depositAmount*2);
+        teller.deposit(ERC20(address(token)), depositAmount*2, 0);
+
+        // Roll over the epochs.
+        for (uint256 i = 0; i < iterations; i++) {
+            seed = uint256(keccak256(abi.encodePacked(seed, i)));
+            uint256 decision = seed % 3;
+            if(decision == 0) {
+                // Deposit.
+                teller.deposit(ERC20(address(token)), depositAmount, 0);
+            } else if(decision == 1) {
+                boringVault.rollOverEpoch();
+
+                // Withdraw if we have enough balance.
+                if(boringVault.balanceOf(address(this)) > withdrawAmount) {
+                    teller.bulkWithdraw(ERC20(address(token)), withdrawAmount, 0, address(this));
+                }
+            } else {
+                // Roll over.
+                boringVault.rollOverEpoch();
+            }
+
+            // Need to store last decision for checks in the next iteration.
+            lastDecision = decision;
+        }
+    }
+
     // /*//////////////////////////////////////////////////////////////
     //                         TRANSFERS
     // //////////////////////////////////////////////////////////////*/
