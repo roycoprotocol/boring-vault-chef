@@ -869,7 +869,7 @@ contract BoringChefTest is Test {
             uint256 decision = seed % 3;
             if (decision == 0) {
                 // Deposit.
-                token.mint(address(this), depositAmount);
+                token.approve(address(boringVault), depositAmount);
                 teller.deposit(ERC20(address(token)), depositAmount, 0);
             } else if (decision == 1) {
                 boringVault.rollOverEpoch();
