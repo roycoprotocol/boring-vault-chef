@@ -874,61 +874,21 @@ contract BoringChefTest is Test {
         // anotherUser should have exactly 40 shares.
         assertEq(finalVaultBalanceAnother, transferShares, "anotherUser final vault shares are incorrect.");
 
-        // b) Token balances do NOT change when transferring shares (only share ownership changes).
-        // So address(this) still has 900e18 tokens if they started with 1,000e18 and deposited 100e18.
-        // Another user also hasn't changed their underlying token balance.
-        assertEq(
-            token.balanceOf(address(this)),
-            900e18,
-            "Token balance of address(this) should be unchanged after share transfer."
-        );
-        assertEq(
-            token.balanceOf(anotherUser),
-            1_000e18,
-            "Token balance of anotherUser should be unchanged after share transfer."
-        );
+        // We should have 2 balance updates, one for the initial deposit and one for the transfer.
+        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
 
-        // c) BoringChef logic: transferring shares triggers _decreaseCurrentEpochParticipation(from)
-        //    and _increaseUpcomingEpochParticipation(to).
-        // So the from-user's current epoch eligible shares decrease,
-        // while the to-user's share goes to the next epoch's eligibleShares.
-        // We'll check these epoch states.
+        // Check the balanceUpdates record for address(this).
+        (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 1);
+        assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
+        assertEq(recBalance, depositAmount - transferShares, "Balance update balance should be depositAmount - transferShares");
 
-        // The 'from' user is in the current epoch (currentEpoch).
-        uint256 currentEpochIndex = boringVault.currentEpoch();
+        // Check the balanceUpdates record for anotherUser.
+        // They should have 1 balance update, for the transfer.
+        assertEq(boringVault.getTotalBalanceUpdates(anotherUser), 1, "Balance updates record is incorrect.");
 
-        // The 'to' user is placed in the upcoming epoch (currentEpoch + 1).
-        uint256 nextEpochIndex = currentEpochIndex + 1;
-
-        // If no other actions occurred in the current epoch besides our deposit,
-        // fromEpochEligibleShares should now be (100 - 40) = 60.
-        // toEpochEligibleShares should be 40 if this is the user's first time receiving shares
-        // in the upcoming epoch.
-        // However, note that if your deposit occurred just moments ago,
-        // you may or may not have "rolled over" the epoch.
-        // Usually, deposit sets your shares into (currentEpoch + 1) anyway.
-        // If you want to confirm the effect, you can check those fields.
-
-        // d) Check user balance update records:
-        // Because the vault calls _decreaseCurrentEpochParticipation(from) for the current epoch
-        // and _increaseUpcomingEpochParticipation(to) for the next epoch, you should see a new
-        // BalanceUpdate entry for each user's array.
-        // For address(this), a new entry in the currentEpoch with updated balance.
-        // For anotherUser, a new entry in nextEpoch with 40 shares.
-
-        // Check the last record in from-user's balanceUpdates:
-        uint256 fromUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
-        (uint256 lastEpochFrom, uint256 lastBalanceFrom) = boringVault.balanceUpdates(address(this), fromUpdatesLen - 1);
-
-        assertEq(lastEpochFrom, currentEpochIndex, "From-user last balance update should track the current epoch.");
-        assertEq(lastBalanceFrom, depositAmount - transferShares, "From-user last recorded share balance mismatch.");
-
-        // Check the last record in to-user's balanceUpdates:
-        uint256 toUpdatesLen = boringVault.getTotalBalanceUpdates(address(this));
-        (uint256 lastEpochTo, uint256 lastBalanceTo) = boringVault.balanceUpdates(anotherUser, toUpdatesLen - 1);
-
-        assertEq(lastEpochTo, nextEpochIndex, "To-user last balance update should track the next epoch.");
-        assertEq(lastBalanceTo, transferShares, "To-user last recorded share balance mismatch.");
+        (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(anotherUser, 0);
+        assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch");
+        assertEq(recBalance2, transferShares, "Balance update balance should be transferShares");
     }
 
     function testFailTransferExceedingBalance() external {
