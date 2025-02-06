@@ -814,6 +814,7 @@ contract BoringChefTest is Test {
             uint256 decision = seed % 3;
             if(decision == 0) {
                 // Deposit.
+                token.mint(address(this), depositAmount);
                 teller.deposit(ERC20(address(token)), depositAmount, 0);
             } else if(decision == 1) {
                 boringVault.rollOverEpoch();
@@ -835,11 +836,14 @@ contract BoringChefTest is Test {
     // /*//////////////////////////////////////////////////////////////
     //                         TRANSFERS
     // //////////////////////////////////////////////////////////////*/
-    function testBasicTransfer() external {
+    function testBasicTransfer(uint256 depositAmount, uint256 transferShares) external {
         // Define amounts.
-        uint256 depositAmount = 100e18;
+        vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
+        vm.assume(transferShares > 1e18 && transferShares < 1e30);
+        vm.assume(depositAmount > transferShares*2);
 
-        // Approve BoringVault for depositAmount tokens.
+        // Mint Approve BoringVault for depositAmount tokens.
+        token.mint(address(this), depositAmount);
         token.approve(address(boringVault), depositAmount);
 
         // Deposit into the vault via the teller.
@@ -858,7 +862,6 @@ contract BoringChefTest is Test {
         boringVault.rollOverEpoch();
 
         // Transfer 40 shares from address(this) to anotherUser.
-        uint256 transferShares = 40e18;
         bool success = boringVault.transfer(anotherUser, transferShares);
         assertTrue(success, "Transfer should succeed.");
 
@@ -874,21 +877,35 @@ contract BoringChefTest is Test {
         // anotherUser should have exactly 40 shares.
         assertEq(finalVaultBalanceAnother, transferShares, "anotherUser final vault shares are incorrect.");
 
-        // We should have 2 balance updates, one for the initial deposit and one for the transfer.
-        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
+        // We should have 1 balance update, for the initial deposit. The transfer should have just updated the balance.
+        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 1, "Balance updates record is incorrect.");
 
         // Check the balanceUpdates record for address(this).
-        (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 1);
+        (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
         assertEq(recBalance, depositAmount - transferShares, "Balance update balance should be depositAmount - transferShares");
 
         // Check the balanceUpdates record for anotherUser.
-        // They should have 1 balance update, for the transfer.
+        // They should have 2 balance updates, for the transfer and the initial deposit.
         assertEq(boringVault.getTotalBalanceUpdates(anotherUser), 1, "Balance updates record is incorrect.");
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(anotherUser, 0);
         assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch");
         assertEq(recBalance2, transferShares, "Balance update balance should be transferShares");
+
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
+
+        // Transfer 40 shares from anotherUser to address(this).
+        boringVault.transfer(anotherUser, transferShares);
+
+        // Check the balanceUpdates record for address(this).
+        // We should have 2 balance updates, for the transfer and the initial deposit.
+        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
+        (uint256 recEpoch3, uint256 recBalance3) = boringVault.balanceUpdates(address(this), 1);
+        assertEq(recEpoch3, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
+        assertEq(recBalance3, depositAmount - (2*transferShares), "Balance update balance should be depositAmount - transferShares");
+
     }
 
     function testFailTransferExceedingBalance() external {
@@ -2164,5 +2181,20 @@ contract BoringChefTest is Test {
         // Get the user's eligible balance
         eligibleBalance = boringVault.getUserEligibleBalance(address(this));
         assertEq(eligibleBalance, 150e18, "User should still have 150 eligible balance");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            BLACKLIST FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    function testBlacklistUser() external {
+        // test_SingleDeposit();
+
+        // Blacklist the user.
+        // boringVault.blacklistUser(address(this));
+
+        // Try to deposit.
+        
+        
+        
     }
 }
