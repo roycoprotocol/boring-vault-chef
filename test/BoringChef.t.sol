@@ -768,33 +768,13 @@ contract BoringChefTest is Test {
         testPrintBalanceUpdates(boringVault.getBalanceUpdates(address(this)));
 
         // Check the balanceUpdates record.
-        // We should now have 3 balance updates, since we have 2 deposits and 1 withdrawal.
-        // The first should be the initial deposit and it should remain the same as before.
-        // The second should be this withdrawal and it should be in the current epoch.
-        // The eligibleBalance should be deposit1 - withdraw1.
-        // The third one should be the second deposit and it should be in the next epoch.
-        // The eligibleBalance should be (deposit1+deposit2) - withdraw1.
-        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 3, "Balance updates record is incorrect.");
+        // We should still have 2 balance updates, since the second deposit was in the next epoch.
+        // And the withdrawal should have taken from the next epoch.
+        assertEq(boringVault.getTotalBalanceUpdates(address(this)), 2, "Balance updates record is incorrect.");
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(address(this), 1);
-        assertEq(recEpoch2, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        if (withdrawAmount > depositAmount) {
-            assertEq(recBalance2, 0, "Balance update balance should be 0");
-        } else {
-            assertEq(
-                recBalance2,
-                depositAmount - withdrawAmount,
-                "Balance update balance should be depositAmount - withdrawAmount"
-            );
-        }
-
-        (uint256 recEpoch3, uint256 recBalance3) = boringVault.balanceUpdates(address(this), 2);
-        assertEq(recEpoch3, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
-        assertEq(
-            recBalance3,
-            depositAmount * 2 - withdrawAmount,
-            "Balance update balance should be depositAmount*2 - withdrawAmount"
-        );
+        assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be in the next epoch");
+        assertEq(recBalance2, depositAmount * 2 - withdrawAmount, "Balance update balance should be depositAmount*2 - withdrawAmount");
     }
 
     // Current update, upcoming update.
