@@ -997,30 +997,6 @@ contract BoringChefTest is Test {
         boringVault.transfer(anotherUser, transferShares);
     }
 
-    function testFailTransferBeforeRollover() external {
-        // Define amounts.
-        uint256 depositAmount = 100e18;
-        uint256 transferShares = 40e18;
-
-        // Approve BoringVault for depositAmount tokens.
-        token.approve(address(boringVault), depositAmount);
-
-        // Deposit into the vault via the teller.
-        // We set minimumMint to 0 for simplicity.
-        teller.deposit(ERC20(address(token)), depositAmount, 0);
-
-        // Check the vault share balance for address(this).
-        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
-        assertEq(
-            initialVaultBalance,
-            depositAmount,
-            "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
-        );
-
-        // Transfer 40 shares from address(this) to anotherUser.
-        boringVault.transfer(anotherUser, transferShares);
-    }
-
     // /*//////////////////////////////////////////////////////////////
     //                         EPOCH ROLLING
     // //////////////////////////////////////////////////////////////*/
