@@ -2226,7 +2226,7 @@ contract BoringChefTest is Test {
         console.log("Balance Updates:");
         // Loop through and print each update.
         for (uint256 i = 0; i < updates.length; i++) {
-            console.log("================================");
+            console.log("--------------------------------");
             console.log("Update Index:", i);
             console.log("  Epoch:         ", uint256(updates[i].epoch));
             console.log("  Total Shares:  ", uint256(updates[i].totalSharesBalance));
