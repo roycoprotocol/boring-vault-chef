@@ -131,7 +131,7 @@ contract BoringChefTest is Test {
         // it should be stored at index 0.
         (uint256 recordedEpoch, uint256 recordedBalance) = boringVault.balanceUpdates(address(this), 0);
         // The update should be for epoch = currentEpoch + 1.
-        uint256 expectedEpoch = boringVault.currentEpoch() + 1;
+        uint48 expectedEpoch = boringVault.currentEpoch() + 1;
         assertEq(recordedEpoch, expectedEpoch, "The balance update epoch is not correct.");
         // The recorded balance should match the user's current share balance.
         assertEq(
@@ -174,7 +174,7 @@ contract BoringChefTest is Test {
         );
 
         // --- Check upcoming epoch's eligibleShares ---
-        uint256 expectedEpoch = boringVault.currentEpoch() + 1;
+        uint48 expectedEpoch = boringVault.currentEpoch() + 1;
         (uint256 eligibleShares,,) = boringVault.epochs(expectedEpoch);
         // The upcoming epoch's eligibleShares should be the sum of all deposits.
         assertEq(
@@ -997,7 +997,7 @@ contract BoringChefTest is Test {
         teller.deposit(ERC20(address(token)), depositAmount, 0);
 
         // Capture the initial epoch. (Assume currentEpoch is already set; if not, it should be 0.)
-        uint256 initialEpoch = boringVault.currentEpoch();
+        uint48 initialEpoch = boringVault.currentEpoch();
 
         // Read the current epoch data.
         (,, uint256 endTimestampBefore) = boringVault.epochs(initialEpoch);
@@ -1019,7 +1019,7 @@ contract BoringChefTest is Test {
         boringVault.rollOverEpoch();
 
         // The currentEpoch should now have incremented.
-        uint256 newEpoch = boringVault.currentEpoch();
+        uint48 newEpoch = boringVault.currentEpoch();
         assertEq(newEpoch, initialEpoch + 1, "Epoch did not increment correctly after rollover");
 
         // ----- Check previous epoch data -----
@@ -1082,7 +1082,7 @@ contract BoringChefTest is Test {
             boringVault.rollOverEpoch();
 
             // The currentEpoch should now have incremented by 1 each time.
-            uint256 currentEpoch = boringVault.currentEpoch();
+            uint48 currentEpoch = boringVault.currentEpoch();
             assertEq(currentEpoch, initialEpoch + i + 1, "Epoch did not increment correctly after rollover");
 
             // Check the previous epoch's endTimestamp is set.
@@ -1164,12 +1164,12 @@ contract BoringChefTest is Test {
         amountArray[1] = 12e18;
         amountArray[2] = 10e18;
 
-        uint128[] memory startEpochArray = new uint128[](3);
+        uint48[] memory startEpochArray = new uint48[](3);
         startEpochArray[0] = 0;
         startEpochArray[1] = 1;
         startEpochArray[2] = 1;
 
-        uint128[] memory endEpochArray = new uint128[](3);
+        uint48[] memory endEpochArray = new uint48[](3);
         endEpochArray[0] = 1;
         endEpochArray[1] = 2;
         endEpochArray[2] = 3;
@@ -1204,7 +1204,7 @@ contract BoringChefTest is Test {
         // For each reward, verify the stored parameters and that the computed total distribution matches the input amount.
         // Reward 0: Distribution for token deposit from epoch 0 to 1.
         {
-            (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
+            (uint256 rStart0, uint256 rEnd0, address rToken0, uint256 rRate0) = boringVault.rewards(0);
             assertEq(rToken0, address(token), "Reward 0 token mismatch");
             assertEq(rStart0, 0, "Reward 0 startEpoch mismatch");
             assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
@@ -1238,7 +1238,7 @@ contract BoringChefTest is Test {
 
         // Reward 1: Distribution for rewardToken1 from epoch 1 to 2.
         {
-            (address rToken1, uint256 rRate1, uint256 rStart1, uint256 rEnd1) = boringVault.rewards(1);
+            (uint256 rStart1, uint256 rEnd1, address rToken1, uint256 rRate1) = boringVault.rewards(1);
             assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
             assertEq(rStart1, 1, "Reward 1 startEpoch mismatch");
             assertEq(rEnd1, 2, "Reward 1 endEpoch mismatch");
@@ -1270,7 +1270,7 @@ contract BoringChefTest is Test {
 
         // Reward 2: Distribution for rewardToken2 from epoch 1 to 3.
         {
-            (address rToken2, uint256 rRate2, uint256 rStart2, uint256 rEnd2) = boringVault.rewards(2);
+            (uint256 rStart2, uint256 rEnd2, address rToken2, uint256 rRate2) = boringVault.rewards(2);
             assertEq(rToken2, address(rewardToken2), "Reward 2 token mismatch");
             assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
             assertEq(rEnd2, 3, "Reward 2 endEpoch mismatch");
@@ -1313,10 +1313,10 @@ contract BoringChefTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint128[] memory startEpochArray = new uint128[](1);
+        uint48[] memory startEpochArray = new uint48[](1);
         startEpochArray[0] = 2;
 
-        uint128[] memory endEpochArray = new uint128[](1);
+        uint48[] memory endEpochArray = new uint48[](1);
         endEpochArray[0] = 0;
 
         boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
@@ -1331,10 +1331,10 @@ contract BoringChefTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint128[] memory startEpochArray = new uint128[](1);
+        uint48[] memory startEpochArray = new uint48[](1);
         startEpochArray[0] = 0;
 
-        uint128[] memory endEpochArray = new uint128[](1);
+        uint48[] memory endEpochArray = new uint48[](1);
         endEpochArray[0] = 2;
 
         boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
@@ -1369,10 +1369,10 @@ contract BoringChefTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint128[] memory startEpochArray = new uint128[](1);
+        uint48[] memory startEpochArray = new uint48[](1);
         startEpochArray[0] = 1;
 
-        uint128[] memory endEpochArray = new uint128[](1);
+        uint48[] memory endEpochArray = new uint48[](1);
         endEpochArray[0] = 1;
 
         // Approve the reward tokens for the vault (boringSafe) to pull the tokens.
@@ -1395,7 +1395,7 @@ contract BoringChefTest is Test {
         // For each reward, verify the stored parameters and that the computed total distribution matches the input amount.
         // Reward 0: Distribution for token deposit from epoch 1.
         {
-            (address rToken0, uint256 rRate0, uint256 rStart0, uint256 rEnd0) = boringVault.rewards(0);
+            (uint256 rStart0, uint256 rEnd0, address rToken0, uint256 rRate0) = boringVault.rewards(0);
             assertEq(rToken0, address(rewardToken1), "Reward 0 token mismatch");
             assertEq(rStart0, 1, "Reward 0 startEpoch mismatch");
             assertEq(rEnd0, 1, "Reward 0 endEpoch mismatch");
@@ -1493,13 +1493,13 @@ contract BoringChefTest is Test {
         amountArray[2] = 30e18;
         amountArray[3] = 10e18;
 
-        uint128[] memory startEpochArray = new uint128[](4);
+        uint48[] memory startEpochArray = new uint48[](4);
         startEpochArray[0] = 1;
         startEpochArray[1] = 2;
         startEpochArray[2] = 1;
         startEpochArray[3] = 3;
 
-        uint128[] memory endEpochArray = new uint128[](4);
+        uint48[] memory endEpochArray = new uint48[](4);
         endEpochArray[0] = 3;
         endEpochArray[1] = 4;
         endEpochArray[2] = 4;
@@ -1525,7 +1525,7 @@ contract BoringChefTest is Test {
         // Each element: [eligibleShares, startTimestamp, endTimestamp]
         uint256[3][] memory epData = new uint256[3][](4);
         for (uint256 i = 0; i < 4; i++) {
-            (epData[i][0], epData[i][1], epData[i][2]) = boringVault.epochs(i + 1);
+            (epData[i][0], epData[i][1], epData[i][2]) = boringVault.epochs(uint48(i + 1));
         }
         uint256 d1 = epData[0][2] - epData[0][1];
         uint256 d2 = epData[1][2] - epData[1][1];
@@ -1805,14 +1805,14 @@ contract BoringChefTest is Test {
         amountArray[2] = 30e18;
         amountArray[3] = 10e18;
 
-        // Using uint128 for start/end epoch arrays to ease stack pressure.
-        uint128[] memory startEpochArray = new uint128[](4);
+        // Using uint48 for start/end epoch arrays to ease stack pressure.
+        uint48[] memory startEpochArray = new uint48[](4);
         startEpochArray[0] = 1;
         startEpochArray[1] = 2;
         startEpochArray[2] = 1;
         startEpochArray[3] = 3;
 
-        uint128[] memory endEpochArray = new uint128[](4);
+        uint48[] memory endEpochArray = new uint48[](4);
         endEpochArray[0] = 3;
         endEpochArray[1] = 4;
         endEpochArray[2] = 4;
@@ -1904,15 +1904,13 @@ contract BoringChefTest is Test {
         // ─────────────────────────────────────────────────────────────
         // DEPLOY REWARD TOKENS: Deploy 20 reward tokens.
         // ─────────────────────────────────────────────────────────────
-        uint256 numRewardTokens = 20;
+        uint256 numRewardTokens = 200;
         MockERC20[] memory rewardTokens = new MockERC20[](numRewardTokens);
+        MockERC20 rt = new MockERC20("RT", "RT", 18);
         for (uint256 i = 0; i < numRewardTokens; i++) {
-            rewardTokens[i] = new MockERC20(
-                string(abi.encodePacked("Reward Token ", uint2str(i))), string(abi.encodePacked("RT", uint2str(i))), 18
-            );
-
+            rewardTokens[i] = rt;
             // Mint the reward tokens to the test contract.
-            rewardTokens[i].mint(address(this), 100e18);
+            rewardTokens[i].mint(address(this), 100000e18);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -1956,9 +1954,11 @@ contract BoringChefTest is Test {
         // PREPARE REWARD CAMPAIGNS:
         // For each reward token, choose a campaign duration between 3 and 10 epochs.
         uint256 currentEpoch = boringVault.currentEpoch(); // should be ~10 after rollovers.
-        uint128[] memory startEpochArray = new uint128[](numRewardTokens);
-        uint128[] memory endEpochArray = new uint128[](numRewardTokens);
+        uint48[] memory startEpochArray = new uint48[](numRewardTokens);
+        uint48[] memory endEpochArray = new uint48[](numRewardTokens);
         uint256[] memory amountArray = new uint256[](numRewardTokens);
+
+        uint256 totalamt = 0;
 
         for (uint256 i = 0; i < numRewardTokens; i++) {
             // 100 epochs in length.
@@ -1969,11 +1969,14 @@ contract BoringChefTest is Test {
             if (endEpoch >= currentEpoch) {
                 endEpoch = currentEpoch - 1;
             }
-            startEpochArray[i] = uint128(i);
-            endEpochArray[i] = uint128(numRewardTokens + i);
+            startEpochArray[i] = uint48(1);
+            endEpochArray[i] = uint48(20);
             // Set reward amount: start at 1e18 and add i * 0.1e18.
             amountArray[i] = 1e18 + (i * 1e17);
+            totalamt += amountArray[i];
         }
+
+        rt.approve(address(boringVault), totalamt);
 
         // Build tokenArray from rewardTokens.
         address[] memory tokenArray = new address[](numRewardTokens);
@@ -1985,9 +1988,7 @@ contract BoringChefTest is Test {
         vm.startPrank(owner);
 
         // Approve reward tokens for distribution.
-        for (uint256 i = 0; i < numRewardTokens; i++) {
-            rewardTokens[i].approve(address(boringVault), amountArray[i]);
-        }
+        for (uint256 i = 0; i < numRewardTokens; i++) {}
 
         boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
 
@@ -2023,10 +2024,10 @@ contract BoringChefTest is Test {
         uint256[] memory amountArray = new uint256[](1);
         amountArray[0] = 100e18;
 
-        uint128[] memory startEpochArray = new uint128[](1);
+        uint48[] memory startEpochArray = new uint48[](1);
         startEpochArray[0] = 1;
 
-        uint128[] memory endEpochArray = new uint128[](1);
+        uint48[] memory endEpochArray = new uint48[](1);
         endEpochArray[0] = 1;
 
         // Distribute rewards.
