@@ -131,7 +131,7 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Disable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function disableRewardAccrual(address user) external requiresAuth {
-        _decreaseCurrentAndFutureEpochParticipation(user, uint128(balanceOf[user]));
+        _decreaseCurrentAndNextEpochParticipation(user, uint128(balanceOf[user]));
         addressToIsDisabled[user] = true;
     }
 
@@ -252,7 +252,7 @@ contract BoringChef is Auth, ERC20 {
         success = super.transfer(to, amount);
 
         // Account for transfer for sender and forfeit incentives for current epoch for msg.sender
-        _decreaseCurrentAndFutureEpochParticipation(msg.sender, uint128(amount));
+        _decreaseCurrentAndNextEpochParticipation(msg.sender, uint128(amount));
 
         // Account for transfer for recipient and transfer incentives for next epoch onwards to "to"
         _increaseNextEpochParticipation(to, uint128(amount));
@@ -270,7 +270,7 @@ contract BoringChef is Auth, ERC20 {
         success = super.transferFrom(from, to, amount);
 
         // Account for transfer for sender and forfeit incentives for current epoch for "from"
-        _decreaseCurrentAndFutureEpochParticipation(from, uint128(amount));
+        _decreaseCurrentAndNextEpochParticipation(from, uint128(amount));
 
         // Account for transfer for recipient and transfer incentives for next epoch onwards to "to"
         _increaseNextEpochParticipation(to, uint128(amount));
@@ -353,7 +353,7 @@ contract BoringChef is Auth, ERC20 {
         super._burn(from, amount);
 
         // Mark this deposit eligible for incentives earned from the next epoch onwards
-        _decreaseCurrentAndFutureEpochParticipation(from, uint128(amount));
+        _decreaseCurrentAndNextEpochParticipation(from, uint128(amount));
     }
 
     /// @dev Roll over to the next epoch.
@@ -415,7 +415,7 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Decrease the user's share balance for the current epoch by withdrawing from
     ///         deposits from the latest eligible epoch down to the current epoch.
-    function _decreaseCurrentAndFutureEpochParticipation(address user, uint128 amount) internal {
+    function _decreaseCurrentAndNextEpochParticipation(address user, uint128 amount) internal {
         // Skip participation accounting if it has been disabled for this address.
         if (addressToIsDisabled[user]) return;
 
