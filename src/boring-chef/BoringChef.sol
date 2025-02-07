@@ -40,7 +40,7 @@ contract BoringChef is Auth, ERC20 {
     /// @dev A record of a user's balance changing at a specific epoch
     struct BalanceUpdate {
         /// @dev The epoch in which the deposit was made
-        uint128 epoch;
+        uint48 epoch;
         /// @dev The total number of shares the user has at this epoch
         uint128 totalSharesBalance;
     }
@@ -60,20 +60,20 @@ contract BoringChef is Auth, ERC20 {
 
     /// @dev A record of a reward
     struct Reward {
+        /// @dev The epoch at which the reward starts
+        uint48 startEpoch;
+        /// @dev The epoch at which the reward ends
+        uint48 endEpoch;
         /// @dev The token being rewarded
         address token;
         /// @dev The rate at which the reward token is distributed per second
         uint256 rewardRate;
-        /// @dev The epoch at which the reward starts
-        uint128 startEpoch;
-        /// @dev The epoch at which the reward ends
-        uint128 endEpoch;
     }
 
     /// @dev A record of a user's balance changing at a specific epoch
     struct RewardClaimInfo {
         /// @dev The epoch in which the deposit was made
-        uint128 epoch;
+        uint48 epoch;
         /// @dev The total number of shares the user has at this epoch
         uint128 totalSharesBalance;
     }
@@ -86,10 +86,10 @@ contract BoringChef is Auth, ERC20 {
     BoringSafe public immutable boringSafe;
 
     /// @dev The current epoch
-    uint128 public currentEpoch;
+    uint48 public currentEpoch;
 
     /// @dev A record of all epochs
-    mapping(uint256 => Epoch) public epochs;
+    mapping(uint48 => Epoch) public epochs;
 
     /// @dev Maps users to an array of their balance changes
     mapping(address user => BalanceUpdate[]) public balanceUpdates;
@@ -163,8 +163,8 @@ contract BoringChef is Auth, ERC20 {
     function distributeRewards(
         address[] calldata tokens,
         uint256[] calldata amounts,
-        uint128[] calldata startEpochs,
-        uint128[] calldata endEpochs
+        uint48[] calldata startEpochs,
+        uint48[] calldata endEpochs
     ) external requiresAuth {
         // Cache length for gas op
         uint256 numRewards = tokens.length;
@@ -189,12 +189,12 @@ contract BoringChef is Auth, ERC20 {
 
             // Create a new reward and update the max reward ID.
             rewards[maxRewardId++] = Reward({
+                startEpoch: startEpochs[i],
+                endEpoch: endEpochs[i],
                 token: tokens[i],
                 // Calculate the reward rate over the epoch period.
                 // Consider the case where endEpochData.endTimestamp == startEpochData.startTimestamp
-                rewardRate: amounts[i].divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp),
-                startEpoch: startEpochs[i],
-                endEpoch: endEpochs[i]
+                rewardRate: amounts[i].divWadDown(endEpochData.endTimestamp - startEpochData.startTimestamp)
             });
 
             // Transfer the reward tokens to the BoringSafe.
@@ -209,9 +209,6 @@ contract BoringChef is Auth, ERC20 {
                        REWARD CLAIMING LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Claim rewards for a given array of tokens and epoch ranges.
-    /// @dev We do this by calculating the rewards owed to the user for each token and epoch range.
-    /// @param rewardIds The IDs of the rewards to claim.
     function claimRewards(uint256[] calldata rewardIds) external {
         // Get the epoch range for all rewards to claim and the corresponding Reward structs.
         (uint128 minEpoch, uint128 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
@@ -228,15 +225,43 @@ contract BoringChef is Auth, ERC20 {
         (uint256[] memory userShareRatios, uint256[] memory epochDurations) =
             _computeUserShareRatiosAndDurations(minEpoch, maxEpoch, userBalanceUpdates);
 
-        // For each reward, calculate the reward amount owed and transfer tokens if necessary.
+        // We'll accumulate rewards per token. Since we cannot create a mapping in memory,
+        // we use two parallel arrays to record unique tokens and their total reward amounts.
+        uint256 uniqueCount = 0;
+        address[] memory uniqueTokens = new address[](rewardIds.length);
+        uint256[] memory tokenAmounts = new uint256[](rewardIds.length);
+
+        // For each reward campaign, calculate the rewards owed and add the amount into
+        // the corresponding unique token's bucket.
         for (uint256 i = 0; i < rewardIds.length; ++i) {
-            // Get total rewards owed to this reward campaign
+            // Calculate the total rewards owed for this reward campaign.
             uint256 rewardsOwed = _calculateRewardsOwed(rewardsToClaim[i], minEpoch, userShareRatios, epochDurations);
 
             if (rewardsOwed > 0) {
-                // Transfer rewards to the depositor
-                boringSafe.transfer(rewardsToClaim[i].token, msg.sender, rewardsOwed);
+                // Check if this reward token was already encountered.
+                bool found = false;
+                for (uint256 j = 0; j < uniqueCount; ++j) {
+                    if (uniqueTokens[j] == rewardsToClaim[i].token) {
+                        tokenAmounts[j] += rewardsOwed;
+                        found = true;
+                        break;
+                    }
+                }
+                // If not found, add a new entry.
+                if (!found) {
+                    uniqueTokens[uniqueCount] = rewardsToClaim[i].token;
+                    tokenAmounts[uniqueCount] = rewardsOwed;
+                    uniqueCount++;
+                }
+                // Emit the reward-claim event per reward campaign.
                 emit UserRewardsClaimed(msg.sender, rewardIds[i], rewardsOwed);
+            }
+        }
+
+        // Finally, do one transfer per unique reward token.
+        for (uint256 i = 0; i < uniqueCount; ++i) {
+            if (tokenAmounts[i] > 0) {
+                boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
             }
         }
     }
@@ -301,7 +326,7 @@ contract BoringChef is Auth, ERC20 {
 
             // If the user is owed rewards for this epoch, remit them
             if (userBalanceAtEpoch > 0) {
-                Epoch storage epochData = epochs[epoch];
+                Epoch storage epochData = epochs[uint48(epoch)];
                 // Compute user fraction = userBalance / totalShares.
                 uint256 userFraction = userBalanceAtEpoch.divWadDown(epochData.eligibleShares);
 
@@ -360,11 +385,11 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Should be called on every boring vault rebalance.
     function _rollOverEpoch() internal {
         // Cache current epoch for gas savings
-        uint128 ongoingEpoch = currentEpoch++;
+        uint48 currEpoch = currentEpoch++;
 
         // Get the current and next epoch data.
-        Epoch storage currentEpochData = epochs[ongoingEpoch];
-        Epoch storage nextEpochData = epochs[++ongoingEpoch];
+        Epoch storage currentEpochData = epochs[currEpoch];
+        Epoch storage nextEpochData = epochs[++currEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
         currentEpochData.endTimestamp = uint64(block.timestamp);
@@ -374,7 +399,7 @@ contract BoringChef is Auth, ERC20 {
         nextEpochData.eligibleShares += currentEpochData.eligibleShares;
 
         // Emit event for epoch start
-        emit EpochStarted(ongoingEpoch, nextEpochData.eligibleShares, block.timestamp);
+        emit EpochStarted(currEpoch, nextEpochData.eligibleShares, block.timestamp);
     }
 
     /// @notice Increase the user's share balance for the next epoch
@@ -383,7 +408,7 @@ contract BoringChef is Auth, ERC20 {
         if (addressToIsDisabled[user]) return;
 
         // Cache next epoch for gas op
-        uint128 nextEpoch = currentEpoch + 1;
+        uint48 nextEpoch = currentEpoch + 1;
 
         // Handle updating the balance accounting for this user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
@@ -420,8 +445,8 @@ contract BoringChef is Auth, ERC20 {
         if (addressToIsDisabled[user]) return;
 
         // Cache the current epoch, next epoch, and user's balance.
-        uint128 currEpoch = currentEpoch;
-        uint128 nextEpoch = currEpoch + 1;
+        uint48 currEpoch = currentEpoch;
+        uint48 nextEpoch = currEpoch + 1;
         uint128 userBalance = uint128(balanceOf[user]);
 
         // Cache the user's balance updates and its length.
@@ -493,7 +518,7 @@ contract BoringChef is Auth, ERC20 {
         } else {
             // CASE 4: The full amount can be withdrawn from the next epoch. Update the last (next epoch) entry.
             lastBalanceUpdate.totalSharesBalance -= amount;
-            epochs[nextEpoch].eligibleShares -= amount;
+            epochs[uint48(nextEpoch)].eligibleShares -= amount;
             // Emit event for this withdrawal
             emit UserWithdrawnFromEpoch(user, currEpoch, amount);
             return;
@@ -550,18 +575,14 @@ contract BoringChef is Auth, ERC20 {
                 }
             }
 
-            // Retrieve the reward ID, start epoch, and end epoch.
-            Reward storage reward = rewards[rewardIds[i]];
-            uint128 startEpoch = reward.startEpoch;
-            uint128 endEpoch = reward.endEpoch;
-            if (startEpoch < minEpoch) {
-                minEpoch = startEpoch;
+            // Retrieve and cache the reward ID, start epoch, and end epoch.
+            rewardsToClaim[i] = rewards[rewardIds[i]];
+            if (rewardsToClaim[i].startEpoch < minEpoch) {
+                minEpoch = rewardsToClaim[i].startEpoch;
             }
-            if (endEpoch > maxEpoch) {
-                maxEpoch = endEpoch;
+            if (rewardsToClaim[i].endEpoch > maxEpoch) {
+                maxEpoch = rewardsToClaim[i].endEpoch;
             }
-            // Move reward to memory for subsequent remittance logic
-            rewardsToClaim[i] = Reward(reward.token, reward.rewardRate, startEpoch, endEpoch);
         }
         // Write back the final cache to persistent storage
         userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
@@ -655,7 +676,7 @@ contract BoringChef is Auth, ERC20 {
             }
 
             // Retrieve the epoch data.
-            Epoch storage epochData = epochs[epoch];
+            Epoch storage epochData = epochs[uint48(epoch)];
             uint256 epochIndex = epoch - minEpoch;
             // Calculate the user's fraction of shares for this epoch.
             userShareRatios[epochIndex] = epochSharesBalance.divWadDown(epochData.eligibleShares);
