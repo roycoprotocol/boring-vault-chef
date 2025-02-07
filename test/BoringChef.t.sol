@@ -800,9 +800,9 @@ contract BoringChefTest is Test {
     // Current update, upcoming update.
     function testFuzz_Deposit_RollOver_Deposit_Withdraw(uint256 depositAmount, uint256 withdrawAmount) external {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
-        vm.assume(depositAmount > 1e18 && depositAmount < 1e30);
-        vm.assume(withdrawAmount > 1e18 && withdrawAmount < 1e30);
-        vm.assume(depositAmount * 2 > withdrawAmount && depositAmount < withdrawAmount);
+        vm.assume(depositAmount > 1e9 && depositAmount < 1e36);
+        vm.assume(withdrawAmount > 1e9);
+        vm.assume(depositAmount/2 > withdrawAmount && depositAmount > withdrawAmount);
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
         token.mint(address(this), depositAmount * 2);
@@ -839,7 +839,7 @@ contract BoringChefTest is Test {
         // Next epoch's eligibleBalance should be depositAmount - withdrawAmount.
         (uint256 recEpoch, uint256 recBalance) = boringVault.balanceUpdates(address(this), 0);
         assertEq(recEpoch, boringVault.currentEpoch(), "Balance update epoch should be currentEpoch");
-        assertEq(recBalance, 0, "Balance update balance should be depositAmount - withdrawAmount");
+        assertEq(recBalance, depositAmount, "Balance update balance should be depositAmount");
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch + 1");
