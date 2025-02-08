@@ -8,6 +8,7 @@ import {FixedPointMathLib} from "@solmate/utils/FixedPointMathLib.sol";
 import {BoringSafe} from "./BoringSafe.sol";
 
 /// @title BoringChef
+/// @notice A contract for reward accounting and retroactive distribution for share based vaults.
 contract BoringChef is Auth, ERC20 {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
