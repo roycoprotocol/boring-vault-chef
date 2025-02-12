@@ -550,7 +550,8 @@ contract BoringChef is Auth, ERC20 {
                 uint256 rewardBucket = rewardIds[i] / 256;
 
                 if (i == 0) {
-                    // Read the 256 bit bit-field to get this rewardId's claim status
+                    // Initialize cache with the reward bucket and bit field
+                    cachedRewardBucket = rewardBucket;
                     cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
                 } else if (cachedRewardBucket != rewardBucket) {
                     // Write back the cached claim data to persistent storage
