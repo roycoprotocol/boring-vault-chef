@@ -619,7 +619,7 @@ contract BoringChef is Auth, ERC20 {
         for (uint48 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
             // Update the user's share balance if a new balance update occurs at the current epoch.
             if (balanceIndex < userBalanceUpdatesLength - 1 && epoch == nextUserBalanceUpdate.epoch) {
-                epochSharesBalance = userBalanceUpdates[++balanceIndex].totalSharesBalance;
+                epochSharesBalance = nextUserBalanceUpdate.totalSharesBalance;
                 if (balanceIndex < userBalanceUpdatesLength - 1) {
                     nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
                 }
