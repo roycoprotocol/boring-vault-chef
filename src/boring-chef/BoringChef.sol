@@ -326,7 +326,7 @@ contract BoringChef is Auth, ERC20 {
 
             // If the user is owed rewards for this epoch, remit them
             if (userBalanceAtEpoch > 0) {
-                Epoch storage epochData = epochs[uint48(epoch)];
+                Epoch storage epochData = epochs[epoch];
                 // Compute user fraction = userBalance / totalShares.
                 uint256 userFraction = uint256(userBalanceAtEpoch).divWadDown(epochData.eligibleShares);
 
@@ -519,7 +519,7 @@ contract BoringChef is Auth, ERC20 {
             // CASE 4: The full amount can be withdrawn from the next epoch. Modify the next epoch (last) update.
         } else {
             lastBalanceUpdate.totalSharesBalance -= amount;
-            epochs[uint48(nextEpoch)].eligibleShares -= amount;
+            epochs[nextEpoch].eligibleShares -= amount;
             // Emit event for this withdrawal.
             emit UserWithdrawnFromEpoch(user, currEpoch, amount);
             return;
@@ -616,7 +616,7 @@ contract BoringChef is Auth, ERC20 {
         }
 
         // Loop over each epoch from minEpoch to maxEpoch.
-        for (uint256 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
+        for (uint48 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
             // Update the user's share balance if a new balance update occurs at the current epoch.
             if (balanceIndex < userBalanceUpdatesLength - 1 && epoch == nextUserBalanceUpdate.epoch) {
                 epochSharesBalance = userBalanceUpdates[++balanceIndex].totalSharesBalance;
@@ -626,7 +626,7 @@ contract BoringChef is Auth, ERC20 {
             }
 
             // Retrieve the epoch data.
-            Epoch storage epochData = epochs[uint48(epoch)];
+            Epoch storage epochData = epochs[epoch];
             uint128 eligibleShares = epochData.eligibleShares;
             // Only calculate ratio and duration if there are eligible shares. Else leave those set to 0.
             if (eligibleShares != 0) {
