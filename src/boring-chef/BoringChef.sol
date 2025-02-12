@@ -627,11 +627,15 @@ contract BoringChef is Auth, ERC20 {
 
             // Retrieve the epoch data.
             Epoch storage epochData = epochs[uint48(epoch)];
-            uint256 epochIndex = epoch - minEpoch;
-            // Calculate the user's fraction of shares for this epoch.
-            userShareRatios[epochIndex] = epochSharesBalance.divWadDown(epochData.eligibleShares);
-            // Calculate the epoch duration.
-            epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            uint128 eligibleShares = epochData.eligibleShares;
+            // Only calculate ratio and duration if there are eligible shares. Else leave those set to 0.
+            if (eligibleShares != 0) {
+                uint256 epochIndex = epoch - minEpoch;
+                // Calculate the user's fraction of shares for this epoch.
+                userShareRatios[epochIndex] = epochSharesBalance.divWadDown(eligibleShares);
+                // Calculate the epoch duration.
+                epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            }
         }
     }
 
