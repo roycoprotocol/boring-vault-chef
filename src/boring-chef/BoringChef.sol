@@ -255,9 +255,7 @@ contract BoringChef is Auth, ERC20 {
 
         // Finally, do one transfer per unique reward token.
         for (uint256 i = 0; i < uniqueCount; ++i) {
-            if (tokenAmounts[i] > 0) {
-                boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
-            }
+            boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
         }
     }
 
