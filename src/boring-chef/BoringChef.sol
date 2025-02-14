@@ -446,7 +446,6 @@ contract BoringChef is Auth, ERC20 {
         // Cache the current epoch, next epoch, and user's balance.
         uint48 currEpoch = currentEpoch;
         uint48 nextEpoch = currEpoch + 1;
-        uint128 userBalance = uint128(balanceOf[user]);
 
         // Cache the user's balance updates and its length.
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
@@ -458,12 +457,18 @@ contract BoringChef is Auth, ERC20 {
         if (lastBalanceUpdate.epoch <= currEpoch) {
             // CASE 1.1: Last balance update is for the current epoch.
             if (lastBalanceUpdate.epoch == currEpoch) {
-                // If already updated for the current epoch, just update the total shares.
-                lastBalanceUpdate.totalSharesBalance = userBalance;
+                // If already updated for the current epoch, just update the total shares to reflect the decrease.
+                lastBalanceUpdate.totalSharesBalance -= amount;
                 // CASE 1.2: Last balance update is a previous epoch. Create a new update to preserve order of updates.
             } else {
                 // Append a new update for the current epoch.
-                userBalanceUpdates.push(BalanceUpdate({epoch: currEpoch, totalSharesBalance: userBalance}));
+                userBalanceUpdates.push(
+                    BalanceUpdate({
+                        epoch: currEpoch,
+                        // Deduct the amount from the last balance update by the shares to decrease by
+                        totalSharesBalance: (lastBalanceUpdate.totalSharesBalance - amount)
+                    })
+                );
             }
             // Account for withdrawal in the current epoch.
             epochs[currEpoch].eligibleShares -= amount;
@@ -475,7 +480,7 @@ contract BoringChef is Auth, ERC20 {
         // CASE 2: Only deposit made is for the next epoch.
         if (balanceUpdatesLength == 1) {
             // If there is only one balance update, it has to be for the next epoch. Update it and adjust the epoch's eligible shares.
-            lastBalanceUpdate.totalSharesBalance = userBalance;
+            lastBalanceUpdate.totalSharesBalance -= amount;
             epochs[nextEpoch].eligibleShares -= amount;
             // Emit event for this withdrawal
             emit UserWithdrawnFromEpoch(user, nextEpoch, amount);
@@ -504,7 +509,7 @@ contract BoringChef is Auth, ERC20 {
             } else {
                 // Update the last entry to be for the current epoch.
                 lastBalanceUpdate.epoch = currEpoch;
-                lastBalanceUpdate.totalSharesBalance = userBalance;
+                lastBalanceUpdate.totalSharesBalance -= amountToWithdrawFromCurrentEpoch;
                 // Withdraw the amount to withdraw from the current epoch from total eligible shared.
                 epochs[currEpoch].eligibleShares -= amountToWithdrawFromCurrentEpoch;
                 // Withdraw the full amount deposited into the next epoch.
