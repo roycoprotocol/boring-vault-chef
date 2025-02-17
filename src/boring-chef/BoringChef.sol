@@ -117,6 +117,7 @@ contract BoringChef is Auth, ERC20 {
         Auth(_owner, Authority(address(0)))
         ERC20(_name, _symbol, _decimals)
     {
+        // Deploy the BoringSafe that the BoringChef will use for escrowing distributed rewards.
         boringSafe = new BoringSafe();
     }
 
@@ -127,6 +128,10 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Disable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function disableRewardAccrual(address user) external requiresAuth {
+        // Check that reward accrual hasn't been disabled already
+        if (addressToIsDisabled[user] == true) {
+            revert CannotDisableRewardAccrualMoreThanOnce();
+        }
         _decreaseCurrentAndNextEpochParticipation(user, uint128(balanceOf[user]));
         addressToIsDisabled[user] = true;
     }
@@ -134,6 +139,10 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Enable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function enableRewardAccrual(address user) external requiresAuth {
+        // Check that reward accrual hasn't been enabled already
+        if (addressToIsDisabled[user] == false) {
+            revert CannotEnableRewardAccrualMoreThanOnce();
+        }
         addressToIsDisabled[user] = false;
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
