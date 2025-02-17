@@ -20,8 +20,9 @@ contract BoringChef is Auth, ERC20 {
     error ArrayLengthMismatch();
     error NoFutureEpochRewards();
     error InvalidRewardCampaignDuration();
-    error RewardClaimedAlready(uint256 rewardId);
+    error MustClaimAtLeastOneReward();
     error CannotClaimFutureReward();
+    error RewardClaimedAlready(uint256 rewardId);
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -528,6 +529,10 @@ contract BoringChef is Auth, ERC20 {
     {
         // Cache array length, rewards, and highest claimable rewardID for gas op.
         uint256 rewardsLength = rewardIds.length;
+        // Check that the user is claiming at least 1 reward.
+        if (rewardsLength == 0) {
+            revert MustClaimAtLeastOneReward();
+        }
         rewardsToClaim = new Reward[](rewardsLength);
         uint256 highestClaimaibleRewardId = maxRewardId - 1;
 
