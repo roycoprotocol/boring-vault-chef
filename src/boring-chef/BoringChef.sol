@@ -24,6 +24,9 @@ contract BoringChef is Auth, ERC20 {
     error MustClaimAtLeastOneReward();
     error CannotClaimFutureReward();
     error RewardClaimedAlready(uint256 rewardId);
+    error EpochHasEligibleShares();
+    error CannotDisableRewardAccrualMoreThanOnce();
+    error CannotEnableRewardAccrualMoreThanOnce();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -267,6 +270,40 @@ contract BoringChef is Auth, ERC20 {
         for (uint256 i = 0; i < uniqueCount; ++i) {
             boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
         }
+    }
+
+    /// @notice Pull out rewards that can't be claimed by anyone to the "recipient".
+    /// @dev Can only be called by an authorized address.
+    /// @param rewardId The rewardId to claim the unclaimable rewards for.
+    /// @param epochsToClaim The epochs for which rewards can't be claimed by anyone (eligibleShares must be equal to 0).
+    /// @param recipient The address to receive the unclaimable rewards.
+    function claimUnclaimableRewards(uint256 rewardId, uint48[] calldata epochsToClaim, address recipient)
+        external
+        requiresAuth
+    {
+        // Ensure that the reward exists
+        if (rewardId > (maxRewardId - 1)) {
+            revert CannotClaimFutureReward();
+        }
+        // Caching for gas op
+        Reward memory reward = rewards[rewardId];
+        uint256 epochsToClaimLength = epochsToClaim.length;
+        // Variable to keep track of total unclaimable rewards
+        uint256 totalUnclaimableRewards = 0;
+        // Iterate through epochs and remit the unclaimable rewards
+        for (uint48 i = 0; i < epochsToClaimLength; ++i) {
+            Epoch memory epoch = epochs[epochsToClaim[i]];
+            // Check that these rewards are unclaimable
+            if (epoch.eligibleShares != 0) {
+                revert EpochHasEligibleShares();
+            }
+            // Calculate total rewards owed for this epoch
+            totalUnclaimableRewards += reward.rewardRate.mulWadDown(epoch.endTimestamp - epoch.startTimestamp);
+        }
+        // Transfer all rewards for this epoch to the recipient
+        boringSafe.transfer(reward.token, recipient, totalUnclaimableRewards);
+        // Emit the reward claim event
+        emit UserRewardsClaimed(recipient, rewardId, totalUnclaimableRewards);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -571,6 +608,7 @@ contract BoringChef is Auth, ERC20 {
             if (rewardIds[i] > highestClaimaibleRewardId) {
                 revert CannotClaimFutureReward();
             }
+
             // Cache management (reading and writing)
             {
                 // Determine the reward bucket that this rewardId belongs in.
