@@ -405,20 +405,25 @@ contract BoringChef is Auth, ERC20 {
 
         // Handle updating the balance accounting for this user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
-        uint128 userBalance = uint128(balanceOf[user]);
         if (userBalanceUpdates.length == 0) {
             // If there are no balance updates, create a new one
-            userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: userBalance}));
+            userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: amount}));
         } else {
             // Get the last balance update
             BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Ensure no duplicate entries
             if (lastBalanceUpdate.epoch == nextEpoch) {
                 // Handle case for multiple deposits into an epoch
-                lastBalanceUpdate.totalSharesBalance = userBalance;
+                lastBalanceUpdate.totalSharesBalance += amount;
             } else {
                 // Handle case for the first deposit for an epoch
-                userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: userBalance}));
+                userBalanceUpdates.push(
+                    BalanceUpdate({
+                        epoch: nextEpoch,
+                        // Add the specified amount to the last balance update's total shares
+                        totalSharesBalance: (lastBalanceUpdate.totalSharesBalance + amount)
+                    })
+                );
             }
         }
 
