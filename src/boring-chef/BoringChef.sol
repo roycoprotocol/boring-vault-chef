@@ -132,6 +132,8 @@ contract BoringChef is Auth, ERC20 {
         if (addressToIsDisabled[user] == true) {
             revert CannotDisableRewardAccrualMoreThanOnce();
         }
+        // Decrease the user's participation by their entire balance
+        // They won't be eligible for rewards from the current epoch onwards unless they are reenabled
         _decreaseCurrentAndNextEpochParticipation(user, uint128(balanceOf[user]));
         addressToIsDisabled[user] = true;
     }
@@ -143,6 +145,8 @@ contract BoringChef is Auth, ERC20 {
         if (addressToIsDisabled[user] == false) {
             revert CannotEnableRewardAccrualMoreThanOnce();
         }
+        // Increase the user's participation by their entire balance
+        // Their entire balance will be eligible for rewards from the next epoch onwards
         addressToIsDisabled[user] = false;
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
@@ -208,6 +212,8 @@ contract BoringChef is Auth, ERC20 {
                        REWARD CLAIMING LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Claims rewards (specified as rewardIds) for the caller.
+    /// @param rewardIds The rewardIds to claim rewards for.
     function claimRewards(uint256[] calldata rewardIds) external {
         // Get the epoch range for all rewards to claim and the corresponding Reward structs.
         (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
