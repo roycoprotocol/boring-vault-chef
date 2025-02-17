@@ -71,14 +71,6 @@ contract BoringChef is Auth, ERC20 {
         uint256 rewardRate;
     }
 
-    /// @dev A record of a user's balance changing at a specific epoch
-    struct RewardClaimInfo {
-        /// @dev The epoch in which the deposit was made
-        uint48 epoch;
-        /// @dev The total number of shares the user has at this epoch
-        uint128 totalSharesBalance;
-    }
-
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
