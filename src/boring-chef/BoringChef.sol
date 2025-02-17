@@ -21,6 +21,7 @@ contract BoringChef is Auth, ERC20 {
     error NoFutureEpochRewards();
     error InvalidRewardCampaignDuration();
     error RewardClaimedAlready(uint256 rewardId);
+    error CannotClaimFutureReward();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -525,9 +526,10 @@ contract BoringChef is Auth, ERC20 {
         internal
         returns (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim)
     {
-        // Cache array length and rewards for gas op.
+        // Cache array length, rewards, and highest claimable rewardID for gas op.
         uint256 rewardsLength = rewardIds.length;
         rewardsToClaim = new Reward[](rewardsLength);
+        uint256 highestClaimaibleRewardId = maxRewardId - 1;
 
         // Initialize epoch range
         minEpoch = type(uint48).max;
@@ -539,6 +541,10 @@ contract BoringChef is Auth, ERC20 {
 
         // Variables used to preprocess rewardsIds to get a range of epochs for all rewards and mark them as claimed.
         for (uint256 i = 0; i < rewardsLength; ++i) {
+            // Check if this rewardID exists
+            if (rewardIds[i] > highestClaimaibleRewardId) {
+                revert CannotClaimFutureReward();
+            }
             // Cache management (reading and writing)
             {
                 // Determine the reward bucket that this rewardId belongs in.
