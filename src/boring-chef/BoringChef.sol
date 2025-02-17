@@ -517,7 +517,7 @@ contract BoringChef is Auth, ERC20 {
             lastBalanceUpdate.totalSharesBalance -= amount;
             epochs[nextEpoch].eligibleShares -= amount;
             // Emit event for this withdrawal.
-            emit UserWithdrawnFromEpoch(user, currEpoch, amount);
+            emit UserWithdrawnFromEpoch(user, nextEpoch, amount);
             return;
         }
     }
