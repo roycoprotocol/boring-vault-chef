@@ -526,7 +526,7 @@ contract BoringChef is Auth, ERC20 {
             } else {
                 // Update the last entry to be for the current epoch.
                 lastBalanceUpdate.epoch = currEpoch;
-                lastBalanceUpdate.totalSharesBalance -= amountToWithdrawFromCurrentEpoch;
+                lastBalanceUpdate.totalSharesBalance -= amount;
                 // Withdraw the amount to withdraw from the current epoch from total eligible shared.
                 epochs[currEpoch].eligibleShares -= amountToWithdrawFromCurrentEpoch;
                 // Withdraw the full amount deposited into the next epoch.
