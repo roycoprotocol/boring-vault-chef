@@ -1,19 +1,26 @@
 ```
-              _____       ______        _____                       _.====.._
-             /  ___|     |___  /       /  ___|                    ,:._       ~-_
-             \ `--.  ___    / /__ _ __ \ `--.  ___  __ _ ___          `\        ~-_
-              `--. \/ _ \  / / _ \ '_ \ `--. \/ _ \/ _` / __|           |          `.
-             /\__/ /  __/./ /  __/ | | /\__/ /  __/ (_| \__ \         ,/             ~-_
-.,_,.='``'-.,\____/ \___|\_/ \___|_| |_\____/ \___|\__,_|___/-..__..-''                 ~~--
+ /$$$$$$$                                                             /$$$$$$            /$$$$$$$$                       /$$$$$$                               
+| $$__  $$                                                           /$$__  $$          |_____ $$/                      /$$__  $$                              
+| $$  \ $$  /$$$$$$  /$$   /$$  /$$$$$$$  /$$$$$$      /$$   /$$    | $$  \__/  /$$$$$$      /$$//$$$$$$  /$$$$$$$     | $$  \__/  /$$$$$$   /$$$$$$   /$$$$$$$
+| $$$$$$$/ /$$__  $$| $$  | $$ /$$_____/ /$$__  $$    |  $$ /$$/    |  $$$$$$  /$$__  $$    /$$//$$__  $$| $$__  $$    |  $$$$$$  /$$__  $$ |____  $$ /$$_____/
+| $$__  $$| $$  \ $$| $$  | $$| $$      | $$  \ $$     \  $$$$/      \____  $$| $$$$$$$$   /$$/| $$$$$$$$| $$  \ $$     \____  $$| $$$$$$$$  /$$$$$$$|  $$$$$$ 
+| $$  \ $$| $$  | $$| $$  | $$| $$      | $$  | $$      >$$  $$      /$$  \ $$| $$_____/  /$$/ | $$_____/| $$  | $$     /$$  \ $$| $$_____/ /$$__  $$ \____  $$
+| $$  | $$|  $$$$$$/|  $$$$$$$|  $$$$$$$|  $$$$$$/     /$$/\  $$    |  $$$$$$/|  $$$$$$$ /$$/  |  $$$$$$$| $$  | $$    |  $$$$$$/|  $$$$$$$|  $$$$$$$ /$$$$$$$/
+|__/  |__/ \______/  \____  $$ \_______/ \______/     |__/  \__/     \______/  \_______/|__/    \_______/|__/  |__/     \______/  \_______/ \_______/|_______/ 
+                     /$$  | $$                                                                                                                                       
+                    |  $$$$$$/                                                                                                                                       
+                     \______/                                                                                                                                                   
 ```
 
-# Boring Vault Architecture
+# Boring Vault Chef Architecture
 
 Boring Vaults are flexible vault contracts that allow for intricate strategies, secured by both onchain and offchain mechanisms.
+This fork of the Boring Vault uses the Boring Chef to facilitate retroactive reward/incentive distribution and claims. The rewards can be in any token and distributed over any historical duration. Depositors that are eligible for these rewards, based on their participation within that duration, can claim them from the Chef.
 
 The BoringVault architecture is made up of:
 
 - **BoringVault**: A barebones vault contract that outsources complex functionality to external contracts.
+- **BoringChef**: A contract that keeps track of each depositor's historical shares in order to remit retroactive rewards to eligible depositors.
 - **Manager**: Limits the possible strategies BoringVaults can use, without large gas overheads, or unnecessary risk.
 - **Teller**: Facilitates user deposits and withdraws in/out of the BoringVault.
 - **Accountant**: Provides a safe share price for Teller interactions via offchain oracles.

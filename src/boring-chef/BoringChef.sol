@@ -8,6 +8,8 @@ import {FixedPointMathLib} from "@solmate/utils/FixedPointMathLib.sol";
 import {BoringSafe} from "./BoringSafe.sol";
 
 /// @title BoringChef
+/// @author Shivaansh Kapoor, Jet Jadeja, Jack Corddry
+/// @notice A contract for reward accounting, retroactive distribution, and claims for share based vaults.
 contract BoringChef is Auth, ERC20 {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
@@ -19,7 +21,11 @@ contract BoringChef is Auth, ERC20 {
     error ArrayLengthMismatch();
     error NoFutureEpochRewards();
     error InvalidRewardCampaignDuration();
+    error MustClaimAtLeastOneReward();
+    error CannotClaimFutureReward();
     error RewardClaimedAlready(uint256 rewardId);
+    error CannotDisableRewardAccrualMoreThanOnce();
+    error CannotEnableRewardAccrualMoreThanOnce();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -70,14 +76,6 @@ contract BoringChef is Auth, ERC20 {
         uint256 rewardRate;
     }
 
-    /// @dev A record of a user's balance changing at a specific epoch
-    struct RewardClaimInfo {
-        /// @dev The epoch in which the deposit was made
-        uint48 epoch;
-        /// @dev The total number of shares the user has at this epoch
-        uint128 totalSharesBalance;
-    }
-
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
@@ -121,6 +119,7 @@ contract BoringChef is Auth, ERC20 {
         Auth(_owner, Authority(address(0)))
         ERC20(_name, _symbol, _decimals)
     {
+        // Deploy the BoringSafe that the BoringChef will use for escrowing distributed rewards.
         boringSafe = new BoringSafe();
     }
 
@@ -131,6 +130,12 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Disable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function disableRewardAccrual(address user) external requiresAuth {
+        // Check that reward accrual hasn't been disabled already
+        if (addressToIsDisabled[user] == true) {
+            revert CannotDisableRewardAccrualMoreThanOnce();
+        }
+        // Decrease the user's participation by their entire balance
+        // They won't be eligible for rewards from the current epoch onwards unless they are reenabled
         _decreaseCurrentAndNextEpochParticipation(user, uint128(balanceOf[user]));
         addressToIsDisabled[user] = true;
     }
@@ -138,6 +143,12 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Enable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function enableRewardAccrual(address user) external requiresAuth {
+        // Check that reward accrual hasn't been enabled already
+        if (addressToIsDisabled[user] == false) {
+            revert CannotEnableRewardAccrualMoreThanOnce();
+        }
+        // Increase the user's participation by their entire balance
+        // Their entire balance will be eligible for rewards from the next epoch onwards
         addressToIsDisabled[user] = false;
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
@@ -146,12 +157,6 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Can only be called by an authorized address.
     function rollOverEpoch() external requiresAuth {
         _rollOverEpoch();
-    }
-
-    /// @notice Roll over to the next epoch.
-    /// @dev Can only be called by an authorized address.
-    function getBalanceUpdates(address user) external view returns (BalanceUpdate[] memory) {
-        return balanceUpdates[user];
     }
 
     /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
@@ -209,13 +214,15 @@ contract BoringChef is Auth, ERC20 {
                        REWARD CLAIMING LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Claims rewards (specified as rewardIds) for the caller.
+    /// @param rewardIds The rewardIds to claim rewards for.
     function claimRewards(uint256[] calldata rewardIds) external {
         // Get the epoch range for all rewards to claim and the corresponding Reward structs.
-        (uint128 minEpoch, uint128 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
+        (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
 
         // Fetch the caller's balance update history.
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[msg.sender];
-        uint128 firstEpochDeposited = userBalanceUpdates[0].epoch;
+        uint48 firstEpochDeposited = userBalanceUpdates[0].epoch;
         // Use the later of the minEpoch from rewards or the user's first deposit epoch.
         if (firstEpochDeposited > minEpoch) {
             minEpoch = firstEpochDeposited;
@@ -266,9 +273,7 @@ contract BoringChef is Auth, ERC20 {
 
         // Finally, do one transfer per unique reward token.
         for (uint256 i = 0; i < uniqueCount; ++i) {
-            if (tokenAmounts[i] > 0) {
-                boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
-            }
+            boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
         }
     }
 
@@ -282,10 +287,10 @@ contract BoringChef is Auth, ERC20 {
         // Transfer shares from msg.sender to "to"
         success = super.transfer(to, amount);
 
-        // Account for transfer for sender and forfeit incentives for current epoch for msg.sender
+        // Account for the transfer for the sender and forfeit incentives for current epoch for msg.sender
         _decreaseCurrentAndNextEpochParticipation(msg.sender, uint128(amount));
 
-        // Account for transfer for recipient and transfer incentives for next epoch onwards to "to"
+        // Account for the transfer for the recipient and transfer incentives for next epoch onwards to "to"
         _increaseNextEpochParticipation(to, uint128(amount));
     }
 
@@ -300,10 +305,10 @@ contract BoringChef is Auth, ERC20 {
         // Transfer shares from "from" to "to"
         success = super.transferFrom(from, to, amount);
 
-        // Account for transfer for sender and forfeit incentives for current epoch for "from"
+        // Account for the transfer for the sender and forfeit incentives for current epoch for "from"
         _decreaseCurrentAndNextEpochParticipation(from, uint128(amount));
 
-        // Account for transfer for recipient and transfer incentives for next epoch onwards to "to"
+        // Account for the transfer for the recipient and transfer incentives for next epoch onwards to "to"
         _increaseNextEpochParticipation(to, uint128(amount));
     }
 
@@ -311,12 +316,17 @@ contract BoringChef is Auth, ERC20 {
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Get all balance updates for a user.
+    function getBalanceUpdates(address user) external view returns (BalanceUpdate[] memory) {
+        return balanceUpdates[user];
+    }
+
     /// @notice Get a user's reward balance for a given reward ID.
     /// @param user The user to get the reward balance for.
     /// @param rewardId The ID of the reward to get the balance for.
     function getUserRewardBalance(address user, uint256 rewardId) external view returns (uint256) {
         // Fetch all balance change updates for the caller.
-        BalanceUpdate[] memory userBalanceUpdates = balanceUpdates[user];
+        BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
 
         // Retrieve the reward ID, start epoch, and end epoch.
         Reward storage reward = rewards[rewardId];
@@ -326,15 +336,15 @@ contract BoringChef is Auth, ERC20 {
 
         // We want to iterate over the epoch range [startEpoch..endEpoch],
         // summing up the user's share of tokens from each epoch.
-        for (uint256 epoch = reward.startEpoch; epoch <= reward.endEpoch; epoch++) {
+        for (uint48 epoch = reward.startEpoch; epoch <= reward.endEpoch; epoch++) {
             // Determine the user's share balance during this epoch.
-            uint256 userBalanceAtEpoch = _findUserBalanceAtEpoch(epoch, userBalanceUpdates);
+            (, uint128 userBalanceAtEpoch) = _findLatestBalanceUpdateForEpoch(epoch, userBalanceUpdates);
 
             // If the user is owed rewards for this epoch, remit them
             if (userBalanceAtEpoch > 0) {
-                Epoch storage epochData = epochs[uint48(epoch)];
+                Epoch storage epochData = epochs[epoch];
                 // Compute user fraction = userBalance / totalShares.
-                uint256 userFraction = userBalanceAtEpoch.divWadDown(epochData.eligibleShares);
+                uint256 userFraction = uint256(userBalanceAtEpoch).divWadDown(epochData.eligibleShares);
 
                 // Figure out how many tokens were distributed in this epoch
                 // for the specified reward ID:
@@ -352,9 +362,10 @@ contract BoringChef is Auth, ERC20 {
 
     /// @notice Get the user's current eligible balance.
     /// @dev Returns the user's eligible balance for the current epoch, not the next epoch
-    function getUserEligibleBalance(address user) external view returns (uint256) {
+    function getUserEligibleBalance(address user) external view returns (uint128) {
         // Find the user's balance at the current epoch
-        return _findUserBalanceAtEpoch(currentEpoch, balanceUpdates[user]);
+        (, uint128 userBalance) = _findLatestBalanceUpdateForEpoch(currentEpoch, balanceUpdates[user]);
+        return userBalance;
     }
 
     /// @notice Get the array of balance updates for a user.
@@ -418,20 +429,25 @@ contract BoringChef is Auth, ERC20 {
 
         // Handle updating the balance accounting for this user
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
-        uint128 userBalance = uint128(balanceOf[user]);
         if (userBalanceUpdates.length == 0) {
             // If there are no balance updates, create a new one
-            userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: userBalance}));
+            userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: amount}));
         } else {
             // Get the last balance update
             BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[userBalanceUpdates.length - 1];
             // Ensure no duplicate entries
             if (lastBalanceUpdate.epoch == nextEpoch) {
                 // Handle case for multiple deposits into an epoch
-                lastBalanceUpdate.totalSharesBalance = userBalance;
+                lastBalanceUpdate.totalSharesBalance += amount;
             } else {
                 // Handle case for the first deposit for an epoch
-                userBalanceUpdates.push(BalanceUpdate({epoch: nextEpoch, totalSharesBalance: userBalance}));
+                userBalanceUpdates.push(
+                    BalanceUpdate({
+                        epoch: nextEpoch,
+                        // Add the specified amount to the last balance update's total shares
+                        totalSharesBalance: (lastBalanceUpdate.totalSharesBalance + amount)
+                    })
+                );
             }
         }
 
@@ -444,8 +460,8 @@ contract BoringChef is Auth, ERC20 {
         emit UserDepositedIntoEpoch(user, nextEpoch, amount);
     }
 
-    /// @notice Decrease the user's share balance for the current epoch by withdrawing from
-    ///         deposits from the latest eligible epoch down to the current epoch.
+    /// @notice Decrease the user's share balance for the current epoch.
+    /// @dev If the user has a deposit for the next epoch, it will withdraw as much as possible from the next epoch and the rest from the current.
     function _decreaseCurrentAndNextEpochParticipation(address user, uint128 amount) internal {
         // Skip participation accounting if it has been disabled for this address.
         if (addressToIsDisabled[user]) return;
@@ -453,7 +469,6 @@ contract BoringChef is Auth, ERC20 {
         // Cache the current epoch, next epoch, and user's balance.
         uint48 currEpoch = currentEpoch;
         uint48 nextEpoch = currEpoch + 1;
-        uint128 userBalance = uint128(balanceOf[user]);
 
         // Cache the user's balance updates and its length.
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
@@ -463,18 +478,24 @@ contract BoringChef is Auth, ERC20 {
 
         // CASE 1: No deposit for the next epoch.
         if (lastBalanceUpdate.epoch <= currEpoch) {
-            // CASE 1.1: Last balance update is for the current epoch
+            // CASE 1.1: Last balance update is for the current epoch.
             if (lastBalanceUpdate.epoch == currEpoch) {
-                // If already updated for the current epoch, just update the total shares.
-                lastBalanceUpdate.totalSharesBalance = userBalance;
+                // If already updated for the current epoch, just update the total shares to reflect the decrease.
+                lastBalanceUpdate.totalSharesBalance -= amount;
                 // CASE 1.2: Last balance update is a previous epoch. Create a new update to preserve order of updates.
             } else {
                 // Append a new update for the current epoch.
-                userBalanceUpdates.push(BalanceUpdate({epoch: currEpoch, totalSharesBalance: userBalance}));
+                userBalanceUpdates.push(
+                    BalanceUpdate({
+                        epoch: currEpoch,
+                        // Deduct the amount from the last balance update by the shares to decrease by
+                        totalSharesBalance: (lastBalanceUpdate.totalSharesBalance - amount)
+                    })
+                );
             }
             // Account for withdrawal in the current epoch.
             epochs[currEpoch].eligibleShares -= amount;
-            // Emit event for this withdrawal
+            // Emit event for this withdrawal.
             emit UserWithdrawnFromEpoch(user, currEpoch, amount);
             return;
         }
@@ -482,7 +503,7 @@ contract BoringChef is Auth, ERC20 {
         // CASE 2: Only deposit made is for the next epoch.
         if (balanceUpdatesLength == 1) {
             // If there is only one balance update, it has to be for the next epoch. Update it and adjust the epoch's eligible shares.
-            lastBalanceUpdate.totalSharesBalance = userBalance;
+            lastBalanceUpdate.totalSharesBalance -= amount;
             epochs[nextEpoch].eligibleShares -= amount;
             // Emit event for this withdrawal
             emit UserWithdrawnFromEpoch(user, nextEpoch, amount);
@@ -497,7 +518,7 @@ contract BoringChef is Auth, ERC20 {
 
         // CASE 3: Deposit Made for the next epoch and the full withdrawal amount cannot be removed solely from the last update.
         if (amount > amountDepositedIntoNextEpoch) {
-            // The amount deposited into the next epoch will be withdrawn completely in this case: amountDepositedIntoNextEpoch == amountToWithdrawFromNextEpoch
+            // The amount deposited into the next epoch will be withdrawn completely in this case: amountDepositedIntoNextEpoch == amountToWithdrawFromNextEpoch.
             // The rest of the withdrawal amount will be deducted from the current epoch.
             uint128 amountToWithdrawFromCurrentEpoch = (amount - amountDepositedIntoNextEpoch);
             if (secondLastBalanceUpdate.epoch == currEpoch) {
@@ -506,56 +527,67 @@ contract BoringChef is Auth, ERC20 {
                 epochs[currEpoch].eligibleShares -= amountToWithdrawFromCurrentEpoch;
                 // Withdraw the amount that was deposited into the next epoch completely
                 epochs[nextEpoch].eligibleShares -= amountDepositedIntoNextEpoch;
-                // Since the next epoch's deposit was completely cleared, we can pop the next epoch's (last) update off
+                // Since the next epoch's deposit was completely cleared, we can pop the next epoch's (last) update off.
                 userBalanceUpdates.pop();
             } else {
                 // Update the last entry to be for the current epoch.
                 lastBalanceUpdate.epoch = currEpoch;
-                lastBalanceUpdate.totalSharesBalance = userBalance;
-                // Withdraw the amount to withdraw from the current epoch from total eligible shared
+                lastBalanceUpdate.totalSharesBalance -= amount;
+                // Withdraw the amount to withdraw from the current epoch from total eligible shared.
                 epochs[currEpoch].eligibleShares -= amountToWithdrawFromCurrentEpoch;
-                // Withdraw the full amount deposited into the next epoch
+                // Withdraw the full amount deposited into the next epoch.
                 epochs[nextEpoch].eligibleShares -= amountDepositedIntoNextEpoch;
             }
-            // Emit event for the withdrawals
+            // Emit event for the withdrawals.
             emit UserWithdrawnFromEpoch(user, nextEpoch, amountDepositedIntoNextEpoch);
             emit UserWithdrawnFromEpoch(user, currEpoch, amountToWithdrawFromCurrentEpoch);
             return;
+            // CASE 4: The full amount can be withdrawn from the next epoch. Modify the next epoch (last) update.
         } else {
-            // CASE 4: The full amount can be withdrawn from the next epoch. Update the last (next epoch) entry.
             lastBalanceUpdate.totalSharesBalance -= amount;
-            epochs[uint48(nextEpoch)].eligibleShares -= amount;
-            // Emit event for this withdrawal
-            emit UserWithdrawnFromEpoch(user, currEpoch, amount);
+            epochs[nextEpoch].eligibleShares -= amount;
+            // Emit event for this withdrawal.
+            emit UserWithdrawnFromEpoch(user, nextEpoch, amount);
             return;
         }
     }
 
     function _getEpochRangeForRewards(uint256[] calldata rewardIds)
         internal
-        returns (uint128 minEpoch, uint128 maxEpoch, Reward[] memory rewardsToClaim)
+        returns (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim)
     {
-        // Cache array length and rewards for gas op
+        // Cache array length, rewards, and highest claimable rewardID for gas op.
         uint256 rewardsLength = rewardIds.length;
+        // Check that the user is claiming at least 1 reward.
+        if (rewardsLength == 0) {
+            revert MustClaimAtLeastOneReward();
+        }
         rewardsToClaim = new Reward[](rewardsLength);
+        uint256 highestClaimaibleRewardId = maxRewardId - 1;
 
         // Initialize epoch range
-        minEpoch = type(uint128).max;
+        minEpoch = type(uint48).max;
         maxEpoch = 0;
 
-        // Variables to cache reward claim data as a gas optimization
+        // Variables to cache reward claim data as a gas optimization.
         uint256 cachedRewardBucket;
         uint256 cachedClaimedRewards;
 
-        // Variables used to preprocess rewardsIds to get a range of epochs for all rewards and mark them as claimed
+        // Variables used to preprocess rewardsIds to get a range of epochs for all rewards and mark them as claimed.
         for (uint256 i = 0; i < rewardsLength; ++i) {
+            // Check if this rewardID exists
+            if (rewardIds[i] > highestClaimaibleRewardId) {
+                revert CannotClaimFutureReward();
+            }
+
             // Cache management (reading and writing)
             {
-                // Determine the reward bucket that this rewardId belongs in
+                // Determine the reward bucket that this rewardId belongs in.
                 uint256 rewardBucket = rewardIds[i] / 256;
 
                 if (i == 0) {
-                    // Read the 256 bit bit-field to get this rewardId's claim status
+                    // Initialize cache with the reward bucket and bit field
+                    cachedRewardBucket = rewardBucket;
                     cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
                 } else if (cachedRewardBucket != rewardBucket) {
                     // Write back the cached claim data to persistent storage
@@ -594,58 +626,6 @@ contract BoringChef is Auth, ERC20 {
         userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
     }
 
-    /// @notice Find the user's share balance at a specific epoch via binary search.
-    /// @dev Assumes `balanceChanges` is sorted in ascending order by `epoch`.
-    /// @param epoch The epoch for which we want the user's balance.
-    /// @param balanceChanges The historical balance updates for a user, sorted ascending by epoch.
-    /// @return The user's shares at the given epoch.
-    function _findUserBalanceAtEpoch(uint256 epoch, BalanceUpdate[] memory balanceChanges)
-        internal
-        pure
-        returns (uint256)
-    {
-        // Edge case: no balance changes at all
-        if (balanceChanges.length == 0) {
-            return 0;
-        }
-
-        // If the requested epoch is before the first recorded epoch,
-        // assume the user had 0 shares.
-        if (epoch < balanceChanges[0].epoch) {
-            return 0;
-        }
-
-        // If the requested epoch is beyond the last recorded epoch,
-        // return the most recent known balance.
-        uint256 lastIndex = balanceChanges.length - 1;
-        if (epoch >= balanceChanges[lastIndex].epoch) {
-            return balanceChanges[lastIndex].totalSharesBalance;
-        }
-
-        // Standard binary search:
-        // We want the highest index where balanceChanges[index].epoch <= epoch
-        uint256 low = 0;
-        uint256 high = lastIndex;
-
-        // Perform the binary search in the range [low, high]
-        while (low < high) {
-            // Midpoint
-            uint256 mid = (low + high + 1) >> 1;
-
-            if (balanceChanges[mid].epoch <= epoch) {
-                // If mid's epoch is <= target, we move `low` up to mid
-                low = mid;
-            } else {
-                // If mid's epoch is > target, we move `high` down to mid - 1
-                high = mid - 1;
-            }
-        }
-
-        // Now `low == high`, which should be the index where epoch <= balanceChanges[low].epoch
-        // and balanceChanges[low].epoch is the largest epoch not exceeding `epoch`.
-        return balanceChanges[low].totalSharesBalance;
-    }
-
     /// @dev Computes the user's share ratios and epoch durations for every epoch between minEpoch and maxEpoch.
     /// @param minEpoch The starting epoch.
     /// @param maxEpoch The ending epoch.
@@ -653,8 +633,8 @@ contract BoringChef is Auth, ERC20 {
     /// @return userShareRatios An array of the user’s fraction of shares for each epoch.
     /// @return epochDurations An array of the epoch durations (endTimestamp - startTimestamp) for each epoch.
     function _computeUserShareRatiosAndDurations(
-        uint128 minEpoch,
-        uint128 maxEpoch,
+        uint48 minEpoch,
+        uint48 maxEpoch,
         BalanceUpdate[] storage userBalanceUpdates
     ) internal view returns (uint256[] memory userShareRatios, uint256[] memory epochDurations) {
         uint256 epochCount = maxEpoch - minEpoch + 1;
@@ -672,22 +652,27 @@ contract BoringChef is Auth, ERC20 {
         }
 
         // Loop over each epoch from minEpoch to maxEpoch.
-        for (uint256 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
+        for (uint48 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
             // Update the user's share balance if a new balance update occurs at the current epoch.
             if (balanceIndex < userBalanceUpdatesLength - 1 && epoch == nextUserBalanceUpdate.epoch) {
-                epochSharesBalance = userBalanceUpdates[++balanceIndex].totalSharesBalance;
+                epochSharesBalance = nextUserBalanceUpdate.totalSharesBalance;
+                balanceIndex++;
                 if (balanceIndex < userBalanceUpdatesLength - 1) {
                     nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
                 }
             }
 
             // Retrieve the epoch data.
-            Epoch storage epochData = epochs[uint48(epoch)];
-            uint256 epochIndex = epoch - minEpoch;
-            // Calculate the user's fraction of shares for this epoch.
-            userShareRatios[epochIndex] = epochSharesBalance.divWadDown(epochData.eligibleShares);
-            // Calculate the epoch duration.
-            epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            Epoch storage epochData = epochs[epoch];
+            uint128 eligibleShares = epochData.eligibleShares;
+            // Only calculate ratio and duration if there are eligible shares. Else leave those set to 0.
+            if (eligibleShares != 0) {
+                uint256 epochIndex = epoch - minEpoch;
+                // Calculate the user's fraction of shares for this epoch.
+                userShareRatios[epochIndex] = epochSharesBalance.divWadDown(eligibleShares);
+                // Calculate the epoch duration.
+                epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            }
         }
     }
 
@@ -721,13 +706,24 @@ contract BoringChef is Auth, ERC20 {
     /// @notice Find the latest balance update index and balance for the specified epoch.
     /// @dev Assumes `balanceUpdates` is sorted in ascending order by `epoch`.
     /// @param epoch The epoch for which we want the user's balance.
-    /// @param userBalanceUpdates The historical balance userBalanceUpdates for a user, sorted ascending by epoch.
+    /// @param userBalanceUpdates The historical balance updates for a user, sorted ascending by epoch.
     /// @return The latest balance update index and balance for the given epoch.
-    function _findLatestBalanceUpdateForEpoch(uint128 epoch, BalanceUpdate[] storage userBalanceUpdates)
+    function _findLatestBalanceUpdateForEpoch(uint48 epoch, BalanceUpdate[] storage userBalanceUpdates)
         internal
         view
         returns (uint256, uint128)
     {
+        // No balance changes at all
+        if (userBalanceUpdates.length == 0) {
+            return (0, 0);
+        }
+
+        // If the requested epoch is before the first recorded epoch,
+        // assume the user had 0 shares.
+        if (epoch < userBalanceUpdates[0].epoch) {
+            return (epoch, 0);
+        }
+
         // If the requested epoch is beyond the last recorded epoch,
         // return the most recent known balance.
         uint256 lastIndex = userBalanceUpdates.length - 1;
