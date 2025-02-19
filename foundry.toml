@@ -2,7 +2,7 @@
 # Sets the concrete solc version to use
 # This overrides the `auto_detect_solc` value
 solc_version = '0.8.21'
-via_ir = true
+# via_ir = true
 auto_detect_solc = false
 evm_version = 'cancun'
 optimizer = true

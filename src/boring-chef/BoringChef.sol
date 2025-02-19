@@ -253,8 +253,14 @@ contract BoringChef is Auth, ERC20 {
                     tokenAmounts[uniqueCount] = rewardsOwed;
                     uniqueCount++;
                 }
+
+                {
+
                 // Emit the reward-claim event per reward campaign.
-                emit UserRewardsClaimed(msg.sender, rewardIds[i], rewardsOwed);
+                uint256 rewardId = rewardIds[i];
+                
+                emit UserRewardsClaimed(msg.sender, rewardId, rewardsOwed);
+                }
             }
         }
 
