@@ -588,25 +588,28 @@ contract BoringChefTest is Test {
         assertEq(finalEligible, 0, "Final eligible balance should be zero");
     }
 
-    // function testFail_WithdrawExceedingBalance() external {
-    //     // Define deposit and withdrawal amounts.
-    //     uint256 depositAmount = 100e18;
-    //     uint256 withdrawShares = 100e18;
+    function testWithdrawExceedingBalanceFails() external {
+        // Define deposit and withdrawal amounts.
+        uint256 depositAmount = 100e18;
+        uint256 withdrawShares = 100e18;
 
-    //     // Approve the BoringVault for the deposit amount.
-    //     token.approve(address(boringVault), depositAmount);
+        // Approve the BoringVault for the deposit amount.
+        token.approve(address(boringVault), depositAmount);
 
-    //     // Call the deposit function on the teller.
-    //     // (minimumMint is set to 0 for simplicity)
-    //     teller.deposit(ERC20(address(token)), depositAmount, 0);
+        // Call the deposit function on the teller.
+        // (minimumMint is set to 0 for simplicity)
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
 
-    //     // Roll over to the next epoch.
-    //     boringVault.rollOverEpoch();
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
 
-    //     // Call bulkWithdraw on the teller.
-    //     // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
-    //     teller.bulkWithdraw(ERC20(address(token)), withdrawShares + 1, 0, address(this));
-    // }
+        // Expect the bulkWithdraw to fail.
+        vm.expectRevert();
+
+        // Call bulkWithdraw on the teller.
+        // Parameters: withdraw asset, number of shares to withdraw, minimumAssets (set to 0), and recipient.
+        teller.bulkWithdraw(ERC20(address(token)), withdrawShares + 1, 0, address(this));
+    }
 
     // No current update, no upcoming update.
     function testFuzz_Deposit_RollOverMultipleEpochs_Withdraw(
@@ -960,32 +963,35 @@ contract BoringChefTest is Test {
         );
     }
 
-    // function testFailTransferExceedingBalance() external {
-    //     // Define amounts.
-    //     uint256 depositAmount = 100e18;
-    //     uint256 transferShares = 101e18;
+    function testTransferExceedingBalanceFails() external {
+        // Define amounts.
+        uint256 depositAmount = 100e18;
+        uint256 transferShares = 101e18;
 
-    //     // Approve BoringVault for depositAmount tokens.
-    //     token.approve(address(boringVault), depositAmount);
+        // Approve BoringVault for depositAmount tokens.
+        token.approve(address(boringVault), depositAmount);
 
-    //     // Deposit into the vault via the teller.
-    //     // We set minimumMint to 0 for simplicity.
-    //     teller.deposit(ERC20(address(token)), depositAmount, 0);
+        // Deposit into the vault via the teller.
+        // We set minimumMint to 0 for simplicity.
+        teller.deposit(ERC20(address(token)), depositAmount, 0);
 
-    //     // Check the vault share balance for address(this).
-    //     uint256 initialVaultBalance = boringVault.balanceOf(address(this));
-    //     assertEq(
-    //         initialVaultBalance,
-    //         depositAmount,
-    //         "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
-    //     );
+        // Check the vault share balance for address(this).
+        uint256 initialVaultBalance = boringVault.balanceOf(address(this));
+        assertEq(
+            initialVaultBalance,
+            depositAmount,
+            "Initial vault share balance should match depositAmount (assuming 1:1 rate)."
+        );
 
-    //     // Roll over to the next epoch.
-    //     boringVault.rollOverEpoch();
+        // Roll over to the next epoch.
+        boringVault.rollOverEpoch();
 
-    //     // Transfer 40 shares from address(this) to anotherUser.
-    //     boringVault.transfer(anotherUser, transferShares);
-    // }
+        // Expect the transfer to fail.
+        vm.expectRevert();
+
+        // Transfer 40 shares from address(this) to anotherUser.
+        boringVault.transfer(anotherUser, transferShares);
+    }
 
     // /*//////////////////////////////////////////////////////////////
     //                         EPOCH ROLLING
@@ -1304,43 +1310,47 @@ contract BoringChefTest is Test {
         }
     }
 
-    // function testFailRewardsStartEpochGreaterThanEndEpoch() external {
-    //     boringVault.rollOverEpoch();
-    //     boringVault.rollOverEpoch();
-    //     boringVault.rollOverEpoch();
+    function testRewardsStartEpochGreaterThanEndEpochFails() external {
+        boringVault.rollOverEpoch();
+        boringVault.rollOverEpoch();
+        boringVault.rollOverEpoch();
 
-    //     address[] memory tokenArray = new address[](1);
-    //     tokenArray[0] = address(token);
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
 
-    //     uint256[] memory amountArray = new uint256[](1);
-    //     amountArray[0] = 100e18;
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
 
-    //     uint48[] memory startEpochArray = new uint48[](1);
-    //     startEpochArray[0] = 2;
+        uint48[] memory startEpochArray = new uint48[](1);
+        startEpochArray[0] = 2;
 
-    //     uint48[] memory endEpochArray = new uint48[](1);
-    //     endEpochArray[0] = 0;
+        uint48[] memory endEpochArray = new uint48[](1);
+        endEpochArray[0] = 0;
 
-    //     boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
-    // }
+        vm.expectRevert();
 
-    // function testFailDistributeRewardsEndEpochInFuture() external {
-    //     boringVault.rollOverEpoch();
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+    }
 
-    //     address[] memory tokenArray = new address[](1);
-    //     tokenArray[0] = address(token);
+    function testDistributeRewardsEndEpochInFutureFails() external {
+        boringVault.rollOverEpoch();
 
-    //     uint256[] memory amountArray = new uint256[](1);
-    //     amountArray[0] = 100e18;
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
 
-    //     uint48[] memory startEpochArray = new uint48[](1);
-    //     startEpochArray[0] = 0;
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
 
-    //     uint48[] memory endEpochArray = new uint48[](1);
-    //     endEpochArray[0] = 2;
+        uint48[] memory startEpochArray = new uint48[](1);
+        startEpochArray[0] = 0;
 
-    //     boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
-    // }
+        uint48[] memory endEpochArray = new uint48[](1);
+        endEpochArray[0] = 2;
+
+        vm.expectRevert();
+
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+    }
 
     function testSingleEpochRewardDistribution() external {
         // Deploy the reward token and mint it.
@@ -1792,44 +1802,45 @@ contract BoringChefTest is Test {
         boringVault.claimRewards(rewardIds);
     }
 
-    // function testFailClaimRewardsAlreadyClaimed() external {
-    //     // Just deposit some tokens.
-    //     testFuzz_MultipleDeposits(100e18, 100e18);
+    function testClaimRewardsAlreadyClaimedFails() external {
+        // Just deposit some tokens.
+        testFuzz_MultipleDeposits(100e18, 100e18);
 
-    //     // Mint and prepare to distribute rewards.
-    //     token.mint(address(this), 100e18);
-    //     token.approve(address(boringVault), 100e18);
-    //     teller.deposit(ERC20(address(token)), 100e18, 0);
+        // Mint and prepare to distribute rewards.
+        token.mint(address(this), 100e18);
+        token.approve(address(boringVault), 100e18);
+        teller.deposit(ERC20(address(token)), 100e18, 0);
 
-    //     // It's currently epoch 1, let's roll it over.
-    //     skip(100);
-    //     boringVault.rollOverEpoch();
+        // It's currently epoch 1, let's roll it over.
+        skip(100);
+        boringVault.rollOverEpoch();
 
-    //     // Distribute rewards.
-    //     address[] memory tokenArray = new address[](1);
-    //     tokenArray[0] = address(token);
+        // Distribute rewards.
+        address[] memory tokenArray = new address[](1);
+        tokenArray[0] = address(token);
 
-    //     uint256[] memory amountArray = new uint256[](1);
-    //     amountArray[0] = 100e18;
+        uint256[] memory amountArray = new uint256[](1);
+        amountArray[0] = 100e18;
 
-    //     uint48[] memory startEpochArray = new uint48[](1);
-    //     startEpochArray[0] = 1;
+        uint48[] memory startEpochArray = new uint48[](1);
+        startEpochArray[0] = 1;
 
-    //     uint48[] memory endEpochArray = new uint48[](1);
-    //     endEpochArray[0] = 1;
+        uint48[] memory endEpochArray = new uint48[](1);
+        endEpochArray[0] = 1;
 
-    //     // Distribute rewards.
-    //     token.approve(address(boringVault), 100e18);
-    //     boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
+        // Distribute rewards.
+        token.approve(address(boringVault), 100e18);
+        boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
 
-    //     // Claim rewards.
-    //     uint256[] memory rewardIds = new uint256[](1);
-    //     rewardIds[0] = 0;
-    //     boringVault.claimRewards(rewardIds);
+        // Claim rewards.
+        uint256[] memory rewardIds = new uint256[](1);
+        rewardIds[0] = 0;
+        boringVault.claimRewards(rewardIds);
 
-    //     // // Try to claim rewards again.
-    //     boringVault.claimRewards(rewardIds);
-    // }
+        // Try to claim rewards again.
+        vm.expectRevert();
+        boringVault.claimRewards(rewardIds);
+    }
 
     // Helper: convert uint256 to string.
     function uint2str(uint256 _i) internal pure returns (string memory) {
