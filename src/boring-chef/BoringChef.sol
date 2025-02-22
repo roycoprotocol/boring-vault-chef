@@ -193,7 +193,7 @@ contract BoringChef is Auth, ERC20 {
             Epoch storage endEpochData = epochs[endEpochs[i]];
 
             // Create a new reward and update the max reward ID.
-            rewards[maxRewardId++] = Reward({
+            rewards[maxRewardId] = Reward({
                 startEpoch: startEpochs[i],
                 endEpoch: endEpochs[i],
                 token: tokens[i],
@@ -206,7 +206,7 @@ contract BoringChef is Auth, ERC20 {
             ERC20(tokens[i]).safeTransferFrom(msg.sender, address(boringSafe), amounts[i]);
 
             // Emit an event for this reward distribution.
-            emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i], maxRewardId - 1);
+            emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i], maxRewardId++);
         }
     }
 
@@ -262,11 +262,10 @@ contract BoringChef is Auth, ERC20 {
                 }
 
                 {
+                    // Emit the reward-claim event per reward campaign.
+                    uint256 rewardId = rewardIds[i];
 
-                // Emit the reward-claim event per reward campaign.
-                uint256 rewardId = rewardIds[i];
-                
-                emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardId, rewardsOwed);
+                    emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardId, rewardsOwed);
                 }
             }
         }
