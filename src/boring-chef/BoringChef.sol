@@ -32,9 +32,9 @@ contract BoringChef is Auth, ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     event EpochStarted(uint256 indexed epoch, uint256 eligibleShares, uint256 startTimestamp);
-    event UserRewardsClaimed(address indexed user, uint256 rewardId, uint256 amount);
+    event UserRewardsClaimed(address indexed user, address indexed token, uint256 rewardId, uint256 amount);
     event RewardsDistributed(
-        address indexed token, uint256 indexed startEpoch, uint256 indexed endEpoch, uint256 amount
+        address indexed token, uint256 indexed startEpoch, uint256 indexed endEpoch, uint256 amount, uint256 rewardId
     );
     event UserDepositedIntoEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
     event UserWithdrawnFromEpoch(address indexed user, uint256 indexed epoch, uint256 shareAmount);
@@ -193,7 +193,7 @@ contract BoringChef is Auth, ERC20 {
             Epoch storage endEpochData = epochs[endEpochs[i]];
 
             // Create a new reward and update the max reward ID.
-            rewards[maxRewardId++] = Reward({
+            rewards[maxRewardId] = Reward({
                 startEpoch: startEpochs[i],
                 endEpoch: endEpochs[i],
                 token: tokens[i],
@@ -206,7 +206,7 @@ contract BoringChef is Auth, ERC20 {
             ERC20(tokens[i]).safeTransferFrom(msg.sender, address(boringSafe), amounts[i]);
 
             // Emit an event for this reward distribution.
-            emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i]);
+            emit RewardsDistributed(tokens[i], startEpochs[i], endEpochs[i], amounts[i], maxRewardId++);
         }
     }
 
@@ -262,11 +262,10 @@ contract BoringChef is Auth, ERC20 {
                 }
 
                 {
+                    // Emit the reward-claim event per reward campaign.
+                    uint256 rewardId = rewardIds[i];
 
-                // Emit the reward-claim event per reward campaign.
-                uint256 rewardId = rewardIds[i];
-                
-                emit UserRewardsClaimed(msg.sender, rewardId, rewardsOwed);
+                    emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardId, rewardsOwed);
                 }
             }
         }
