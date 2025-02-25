@@ -215,8 +215,9 @@ contract BoringChef is Auth, ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Claims rewards (specified as rewardIds) for the caller.
+    /// @dev Should be permissionless in normal circumstances.
     /// @param rewardIds The rewardIds to claim rewards for.
-    function claimRewards(uint256[] calldata rewardIds) external {
+    function claimRewards(uint256[] calldata rewardIds) external requiresAuth {
         // Get the epoch range for all rewards to claim and the corresponding Reward structs.
         (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
 
