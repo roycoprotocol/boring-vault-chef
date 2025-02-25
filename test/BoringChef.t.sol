@@ -71,6 +71,8 @@ contract BoringChefTest is Test {
         // Deploy a RolesAuthority contract. Here we use the test contract as the authority owner.
         rolesAuthority = new RolesAuthority(owner, Authority(address(0)));
 
+        rolesAuthority.setPublicCapability(address(boringVault), boringVault.claimRewards.selector, true);
+
         // Set up role capabilities for the vault.
         rolesAuthority.setRoleCapability(MINTER_ROLE, address(boringVault), BoringVault.enter.selector, true);
         rolesAuthority.setRoleCapability(BURNER_ROLE, address(boringVault), BoringVault.exit.selector, true);
@@ -779,7 +781,11 @@ contract BoringChefTest is Test {
 
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(address(this), 1);
         assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be in the next epoch");
-        assertEq(recBalance2, depositAmount * 2 - withdrawAmount, "Balance update balance should be depositAmount*2 - withdrawAmount");
+        assertEq(
+            recBalance2,
+            depositAmount * 2 - withdrawAmount,
+            "Balance update balance should be depositAmount*2 - withdrawAmount"
+        );
     }
 
     // Current update, upcoming update.
@@ -787,7 +793,7 @@ contract BoringChefTest is Test {
         // Assume deposit and withdraw amounts are between 1e18 and 1e30.
         vm.assume(depositAmount > 1e9 && depositAmount < 1e36);
         vm.assume(withdrawAmount > 1e9);
-        vm.assume(depositAmount/2 > withdrawAmount && depositAmount > withdrawAmount);
+        vm.assume(depositAmount / 2 > withdrawAmount && depositAmount > withdrawAmount);
 
         // Mint the tokens to this contract. Aprove it for the withdraw amount.
         token.mint(address(this), depositAmount * 2);
@@ -1435,21 +1441,12 @@ contract BoringChefTest is Test {
         MockERC20 rewardToken2;
         MockERC20 rewardToken3;
 
-        { // Setup block: set roles and deploy/mint reward tokens.
+        {
+            // Setup block: set roles and deploy/mint reward tokens.
             rolesAuthority.setUserRole(testUser, DEPOSITOR_ROLE, true);
             rolesAuthority.setUserRole(anotherUser, DEPOSITOR_ROLE, true);
-            rolesAuthority.setRoleCapability(
-                DEPOSITOR_ROLE,
-                address(teller),
-                teller.deposit.selector,
-                true
-            );
-            rolesAuthority.setRoleCapability(
-                DEPOSITOR_ROLE,
-                address(teller),
-                teller.bulkWithdraw.selector,
-                true
-            );
+            rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.deposit.selector, true);
+            rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.bulkWithdraw.selector, true);
 
             // Deploy three reward tokens.
             rewardToken1 = new MockERC20("Reward Token 1", "RT1", 18);
@@ -1461,7 +1458,8 @@ contract BoringChefTest is Test {
             rewardToken2.mint(address(this), 200e18);
             rewardToken3.mint(address(this), 200e18);
         }
-        { // Deposits block.
+        {
+            // Deposits block.
             // (1) Address(this) deposits 100 tokens.
             token.approve(address(boringVault), 100e18);
             teller.deposit(ERC20(address(token)), 100e18, 0);
@@ -1490,7 +1488,8 @@ contract BoringChefTest is Test {
             skip(100);
             boringVault.rollOverEpoch();
         }
-        { // Reward distribution block.
+        {
+            // Reward distribution block.
             address[] memory tokenArray = new address[](4);
             tokenArray[0] = address(token);
             tokenArray[1] = address(rewardToken1);
@@ -1520,17 +1519,13 @@ contract BoringChefTest is Test {
             rewardToken2.approve(address(boringVault), 30e18);
             rewardToken3.approve(address(boringVault), 10e18);
 
-            boringVault.distributeRewards(
-                tokenArray,
-                amountArray,
-                startEpochArray,
-                endEpochArray
-            );
+            boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
         }
-        { // Verification block.
+        {
+            // Verification block.
             // Verify Reward 0.
             {
-                (uint256 rStart0, uint256 rEnd0, address rToken0, ) = boringVault.rewards(0);
+                (uint256 rStart0, uint256 rEnd0, address rToken0,) = boringVault.rewards(0);
                 assertEq(rToken0, address(token), "Reward 0 token mismatch");
                 assertEq(rStart0, 1, "Reward 0 startEpoch mismatch");
                 assertEq(rEnd0, 3, "Reward 0 endEpoch mismatch");
@@ -1538,21 +1533,21 @@ contract BoringChefTest is Test {
             }
             // Verify Reward 1.
             {
-                (uint256 rStart1, uint256 rEnd1, address rToken1, ) = boringVault.rewards(1);
+                (uint256 rStart1, uint256 rEnd1, address rToken1,) = boringVault.rewards(1);
                 assertEq(rToken1, address(rewardToken1), "Reward 1 token mismatch");
                 assertEq(rStart1, 2, "Reward 1 startEpoch mismatch");
                 assertEq(rEnd1, 4, "Reward 1 endEpoch mismatch");
             }
             // Verify Reward 2.
             {
-                (uint256 rStart2, uint256 rEnd2, address rToken2, ) = boringVault.rewards(2);
+                (uint256 rStart2, uint256 rEnd2, address rToken2,) = boringVault.rewards(2);
                 assertEq(rToken2, address(rewardToken2), "Reward 2 token mismatch");
                 assertEq(rStart2, 1, "Reward 2 startEpoch mismatch");
                 assertEq(rEnd2, 4, "Reward 2 endEpoch mismatch");
             }
             // Verify Reward 3.
             {
-                (uint256 rStart3, uint256 rEnd3, address rToken3, ) = boringVault.rewards(3);
+                (uint256 rStart3, uint256 rEnd3, address rToken3,) = boringVault.rewards(3);
                 assertEq(rToken3, address(rewardToken3), "Reward 3 token mismatch");
                 assertEq(rStart3, 3, "Reward 3 startEpoch mismatch");
                 assertEq(rEnd3, 3, "Reward 3 endEpoch mismatch");
@@ -1570,21 +1565,12 @@ contract BoringChefTest is Test {
         MockERC20 rewardToken2;
         MockERC20 rewardToken3;
 
-        { // Setup block: set roles, deploy reward tokens, and deposit tokens.
+        {
+            // Setup block: set roles, deploy reward tokens, and deposit tokens.
             rolesAuthority.setUserRole(testUser, DEPOSITOR_ROLE, true);
             rolesAuthority.setUserRole(anotherUser, DEPOSITOR_ROLE, true);
-            rolesAuthority.setRoleCapability(
-                DEPOSITOR_ROLE,
-                address(teller),
-                teller.deposit.selector,
-                true
-            );
-            rolesAuthority.setRoleCapability(
-                DEPOSITOR_ROLE,
-                address(teller),
-                teller.bulkWithdraw.selector,
-                true
-            );
+            rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.deposit.selector, true);
+            rolesAuthority.setRoleCapability(DEPOSITOR_ROLE, address(teller), teller.bulkWithdraw.selector, true);
 
             // Deploy and mint reward tokens.
             rewardToken1 = new MockERC20("Reward Token 1", "RT1", 18);
@@ -1601,7 +1587,8 @@ contract BoringChefTest is Test {
             skip(50);
             boringVault.rollOverEpoch();
         }
-        { // Second epoch: testUser deposits.
+        {
+            // Second epoch: testUser deposits.
             vm.startPrank(testUser);
             token.approve(address(boringVault), 150e18);
             teller.deposit(ERC20(address(token)), 150e18, 0);
@@ -1609,7 +1596,8 @@ contract BoringChefTest is Test {
             skip(100);
             boringVault.rollOverEpoch();
         }
-        { // Third epoch: deposits by anotherUser and an extra deposit by Address(this).
+        {
+            // Third epoch: deposits by anotherUser and an extra deposit by Address(this).
             vm.startPrank(anotherUser);
             token.approve(address(boringVault), 200e18);
             teller.deposit(ERC20(address(token)), 200e18, 0);
@@ -1623,7 +1611,8 @@ contract BoringChefTest is Test {
             skip(100);
             boringVault.rollOverEpoch();
         }
-        { // Rewards distribution block.
+        {
+            // Rewards distribution block.
             address[] memory tokenArray = new address[](4);
             tokenArray[0] = address(token);
             tokenArray[1] = address(rewardToken1);
@@ -1653,14 +1642,10 @@ contract BoringChefTest is Test {
             rewardToken2.approve(address(boringVault), 30e18);
             rewardToken3.approve(address(boringVault), 10e18);
 
-            boringVault.distributeRewards(
-                tokenArray,
-                amountArray,
-                startEpochArray,
-                endEpochArray
-            );
+            boringVault.distributeRewards(tokenArray, amountArray, startEpochArray, endEpochArray);
         }
-        { // Claim rewards block.
+        {
+            // Claim rewards block.
             uint256[] memory rewardIds = new uint256[](4);
             rewardIds[0] = 0;
             rewardIds[1] = 1;
@@ -1678,7 +1663,8 @@ contract BoringChefTest is Test {
             boringVault.claimRewards(rewardIds);
             vm.stopPrank();
         }
-        { // Verification block.
+        {
+            // Verification block.
             assertEq(
                 rewardToken1.balanceOf(address(this)),
                 boringVault.getUserRewardBalance(address(this), 1),
@@ -2062,8 +2048,8 @@ contract BoringChefTest is Test {
         }
         // Loop through the balanceUpdates array and check that each epoch is strictly less than the next.
         for (uint256 i = 0; i < totalUpdates - 1; i++) {
-            (uint256 epoch1, ) = boringVault.balanceUpdates(msg.sender, i);
-            (uint256 epoch2, ) = boringVault.balanceUpdates(msg.sender, i + 1);
+            (uint256 epoch1,) = boringVault.balanceUpdates(msg.sender, i);
+            (uint256 epoch2,) = boringVault.balanceUpdates(msg.sender, i + 1);
             if (epoch1 >= epoch2) {
                 return false;
             }
