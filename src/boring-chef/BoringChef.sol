@@ -688,6 +688,8 @@ contract BoringChef is Auth, ERC20 {
         uint256[] memory userShareRatios,
         uint256[] memory epochDurations
     ) internal pure returns (uint256 rewardsOwed) {
+        // Scale rate up by 1e18 to avoid precision loss
+        uint256 rateWAD = reward.rewardRate * 1e18;
         for (uint256 epoch = reward.startEpoch; epoch <= reward.endEpoch; ++epoch) {
             if (epoch < minEpoch) {
                 // If user didn't have a deposit in this epoch, skip reward calculation
@@ -697,10 +699,12 @@ contract BoringChef is Auth, ERC20 {
             uint256 userShareRatioForEpoch = userShareRatios[epochIndex];
             // Only process epochs where the user had a positive share ratio.
             if (userShareRatioForEpoch > 0) {
-                uint256 epochReward = reward.rewardRate.mulWadDown(epochDurations[epochIndex]);
+                uint256 epochReward = rateWAD.mulWadDown(epochDurations[epochIndex]);
                 rewardsOwed += epochReward.mulWadDown(userShareRatioForEpoch);
             }
         }
+        // Scale down by 1e18 to get the final reward amount
+        rewardsOwed /= 1e18;
     }
 
     /// @notice Find the latest balance update index and balance for the specified epoch.
