@@ -312,6 +312,16 @@ contract BoringChef is Auth, ERC20 {
         _increaseNextEpochParticipation(to, uint128(amount));
     }
 
+    /// @notice Transfers funds from the BoringSafe in case of an emergency.
+    /// @notice Only callable by an authority.
+    /// @param token The address of the ERC20 token to transfer.
+    /// @param to The recipient address.
+    /// @param amount The amount of tokens to transfer.
+    function transferFromBoringSafe(address token, address to, uint256 amount) external requiresAuth {
+        // Transfer ERC20 tokens
+        boringSafe.transfer(token, to, amount);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/

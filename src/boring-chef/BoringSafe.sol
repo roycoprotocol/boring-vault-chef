@@ -13,8 +13,8 @@ contract BoringSafe is Owned(msg.sender) {
     /// @notice Transfers funds from this contract.
     /// @notice Only callable by the owner (BoringChef).
     /// @param token The address of the ERC20 token to transfer.
-    /// @param amount The amount of tokens  to transfer.
     /// @param to The recipient address.
+    /// @param amount The amount of tokens  to transfer.
     function transfer(address token, address to, uint256 amount) external onlyOwner {
         // Transfer ERC20 tokens
         ERC20(token).safeTransfer(to, amount);
