@@ -358,9 +358,10 @@ contract BoringChef is Auth, ERC20 {
                 // Add that to rewardsOwed.
                 rewardsOwed += epochReward.mulWadDown(userFraction);
             }
-            // Scale down by 1e18 to get the final reward amount
-            rewardsOwed /= 1e18;
         }
+
+        // Scale down by 1e18 to get the final reward amount
+        rewardsOwed /= 1e18;
 
         return rewardsOwed;
     }
