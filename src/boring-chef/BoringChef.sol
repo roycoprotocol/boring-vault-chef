@@ -334,6 +334,9 @@ contract BoringChef is Auth, ERC20 {
         // Initialize a local accumulator for the total reward owed.
         uint256 rewardsOwed = 0;
 
+        // Scale rate up by 1e18 to avoid precision loss
+        uint256 rateWAD = reward.rewardRate * 1e18;
+
         // We want to iterate over the epoch range [startEpoch..endEpoch],
         // summing up the user's share of tokens from each epoch.
         for (uint48 epoch = reward.startEpoch; epoch <= reward.endEpoch; epoch++) {
@@ -349,12 +352,14 @@ contract BoringChef is Auth, ERC20 {
                 // Figure out how many tokens were distributed in this epoch
                 // for the specified reward ID:
                 uint256 epochDuration = epochData.endTimestamp - epochData.startTimestamp;
-                uint256 epochReward = reward.rewardRate.mulWadDown(epochDuration);
+                uint256 epochReward = rateWAD.mulWadDown(epochDuration);
 
                 // Multiply epochReward * fraction = userRewardThisEpoch.
                 // Add that to rewardsOwed.
                 rewardsOwed += epochReward.mulWadDown(userFraction);
             }
+            // Scale down by 1e18 to get the final reward amount
+            rewardsOwed /= 1e18;
         }
 
         return rewardsOwed;
