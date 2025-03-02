@@ -241,7 +241,8 @@ contract BoringChef is Auth, ERC20 {
 
         // For each reward campaign, calculate the rewards owed and add the amount into
         // the corresponding unique token's bucket.
-        for (uint256 i = 0; i < rewardIds.length; ++i) {
+        uint rlength = rewardIds.length;
+        for (uint256 i = 0; i < rlength; ++i) {
             // Calculate the total rewards owed for this reward campaign.
             uint256 rewardsOwed = _calculateRewardsOwed(rewardsToClaim[i], minEpoch, userShareRatios, epochDurations);
 
@@ -648,37 +649,56 @@ contract BoringChef is Auth, ERC20 {
         epochDurations = new uint256[](epochCount);
 
         uint256 userBalanceUpdatesLength = userBalanceUpdates.length;
+
         // Get the user's share balance at minEpoch.
         (uint256 balanceIndex, uint256 epochSharesBalance) =
             _findLatestBalanceUpdateForEpoch(minEpoch, userBalanceUpdates);
-        // Cache the next balance update if it exists.
+
+        // Cache nextUserBalanceUpdate outside the loop
         BalanceUpdate memory nextUserBalanceUpdate;
-        if (balanceIndex < userBalanceUpdatesLength - 1) {
+        bool hasNextUpdate = balanceIndex < userBalanceUpdatesLength - 1;
+        
+        if (hasNextUpdate) {
             nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
         }
 
+        // Avoid repeated storage reads by caching epoch data where possible
+        Epoch storage prevEpochData;
+        uint48 prevEpoch;
+        bool hasPrevEpochData = false;
+
         // Loop over each epoch from minEpoch to maxEpoch.
         for (uint48 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
-            // Update the user's share balance if a new balance update occurs at the current epoch.
-            if (balanceIndex < userBalanceUpdatesLength - 1 && epoch == nextUserBalanceUpdate.epoch) {
-                epochSharesBalance = nextUserBalanceUpdate.totalSharesBalance;
-                balanceIndex++;
-                if (balanceIndex < userBalanceUpdatesLength - 1) {
-                    nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
-                }
-            }
 
-            // Retrieve the epoch data.
-            Epoch storage epochData = epochs[epoch];
-            uint128 eligibleShares = epochData.eligibleShares;
-            // Only calculate ratio and duration if there are eligible shares. Else leave those set to 0.
-            if (eligibleShares != 0) {
-                uint256 epochIndex = epoch - minEpoch;
-                // Calculate the user's fraction of shares for this epoch.
-                userShareRatios[epochIndex] = epochSharesBalance.divWadDown(eligibleShares);
-                // Calculate the epoch duration.
-                epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            uint256 epochIndex = epoch - minEpoch;
+            if (hasNextUpdate && epoch == nextUserBalanceUpdate.epoch) {
+            epochSharesBalance = nextUserBalanceUpdate.totalSharesBalance;
+            balanceIndex++;
+            
+            // Update hasNextUpdate flag and next update if available
+            hasNextUpdate = balanceIndex < userBalanceUpdatesLength - 1;
+            if (hasNextUpdate) {
+                nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
             }
+        }
+        
+        // Retrieve the epoch data
+        Epoch storage epochData = epochs[epoch];
+        uint128 eligibleShares = epochData.eligibleShares;
+        
+        // Skip calculations if no eligible shares
+        if (eligibleShares == 0) continue;
+        
+        // Calculate user share ratio once
+        userShareRatios[epochIndex] = epochSharesBalance.divWadDown(eligibleShares);
+        
+        // Calculate epoch duration
+        epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+        
+        // Cache current epoch data for next iteration
+        prevEpochData = epochData;
+        prevEpoch = epoch;
+        hasPrevEpochData = true;
         }
     }
 
