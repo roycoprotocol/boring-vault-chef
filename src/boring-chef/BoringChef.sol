@@ -524,6 +524,11 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
+    /// @dev Retrieves the epoch range for a set of reward campaigns and marks them as claimed.
+    /// @param rewardIds An array of reward campaign identifiers to process.
+    /// @return minEpoch The smallest starting epoch among the rewards to claim.
+    /// @return maxEpoch The largest ending epoch among the rewards to claim.
+    /// @return rewardsToClaim An array of Reward structs corresponding to each reward ID provided.
     function _getEpochRangeForRewards(uint256[] calldata rewardIds)
         internal
         returns (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim)
@@ -649,20 +654,18 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
-    /**
-     * @notice Computes the rewards per unique token for a set of reward campaigns.
-     * @param rewardIds An array of identifiers for the reward campaigns to process.
-     * @param rewardsToClaim An array of Reward structs containing the details for each reward campaign.
-     * @param minEpoch The starting epoch from which rewards are calculated, adjusted to be the
-     *        later of the reward campaign's minimum epoch or the user's first deposit epoch.
-     * @param userShareRatios An array of precomputed share ratios for the user over a range of epochs,
-     *        used to determine the user's portion of the rewards.
-     * @param epochDurations An array of epoch durations corresponding to the time intervals over which
-     *        rewards are computed.
-     * @return uniqueTokens An array of unique token addresses for which rewards have been computed.
-     * @return tokenAmounts An array of reward amounts corresponding to each unique token in `uniqueTokens`.
-     * @return uniqueCount The number of unique tokens for which rewards have been computed.
-     */
+    /// @notice Computes the rewards per unique token for a set of reward campaigns.
+    /// @param rewardIds An array of identifiers for the reward campaigns to process.
+    /// @param rewardsToClaim An array of Reward structs containing the details for each reward campaign.
+    /// @param minEpoch The starting epoch from which rewards are calculated, adjusted to be the
+    ///        later of the reward campaign's minimum epoch or the user's first deposit epoch.
+    /// @param userShareRatios An array of precomputed share ratios for the user over a range of epochs,
+    ///        used to determine the user's portion of the rewards.
+    /// @param epochDurations An array of epoch durations corresponding to the time intervals over which
+    ///        rewards are computed.
+    /// @return uniqueTokens An array of unique token addresses for which rewards have been computed.
+    /// @return tokenAmounts An array of reward amounts corresponding to each unique token in `uniqueTokens`.
+    /// @return uniqueCount The number of unique tokens for which rewards have been computed.
     function _computeRewardsPerUniqueToken(
         uint256[] calldata rewardIds,
         Reward[] memory rewardsToClaim,
