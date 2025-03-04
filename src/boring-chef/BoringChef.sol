@@ -233,43 +233,9 @@ contract BoringChef is Auth, ERC20 {
         (uint256[] memory userShareRatios, uint256[] memory epochDurations) =
             _computeUserShareRatiosAndDurations(minEpoch, maxEpoch, userBalanceUpdates);
 
-        // We'll accumulate rewards per token. Since we cannot create a mapping in memory,
-        // we use two parallel arrays to record unique tokens and their total reward amounts.
-        uint256 uniqueCount = 0;
-        address[] memory uniqueTokens = new address[](rewardIds.length);
-        uint256[] memory tokenAmounts = new uint256[](rewardIds.length);
-
-        // For each reward campaign, calculate the rewards owed and add the amount into
-        // the corresponding unique token's bucket.
-        for (uint256 i = 0; i < rewardIds.length; ++i) {
-            // Calculate the total rewards owed for this reward campaign.
-            uint256 rewardsOwed = _calculateRewardsOwed(rewardsToClaim[i], minEpoch, userShareRatios, epochDurations);
-
-            if (rewardsOwed > 0) {
-                // Check if this reward token was already encountered.
-                bool found = false;
-                for (uint256 j = 0; j < uniqueCount; ++j) {
-                    if (uniqueTokens[j] == rewardsToClaim[i].token) {
-                        tokenAmounts[j] += rewardsOwed;
-                        found = true;
-                        break;
-                    }
-                }
-                // If not found, add a new entry.
-                if (!found) {
-                    uniqueTokens[uniqueCount] = rewardsToClaim[i].token;
-                    tokenAmounts[uniqueCount] = rewardsOwed;
-                    uniqueCount++;
-                }
-
-                {
-                    // Emit the reward-claim event per reward campaign.
-                    uint256 rewardId = rewardIds[i];
-
-                    emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardId, rewardsOwed);
-                }
-            }
-        }
+        // Get the rewards owed per unique token in rewardIds.
+        (address[] memory uniqueTokens, uint256[] memory tokenAmounts, uint256 uniqueCount) =
+            _computeRewardsPerUniqueToken(rewardIds, rewardsToClaim, minEpoch, userShareRatios, epochDurations);
 
         // Finally, do one transfer per unique reward token.
         for (uint256 i = 0; i < uniqueCount; ++i) {
@@ -558,6 +524,11 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
+    /// @dev Retrieves the epoch range for a set of reward campaigns and marks them as claimed.
+    /// @param rewardIds An array of reward campaign identifiers to process.
+    /// @return minEpoch The smallest starting epoch among the rewards to claim.
+    /// @return maxEpoch The largest ending epoch among the rewards to claim.
+    /// @return rewardsToClaim An array of Reward structs corresponding to each reward ID provided.
     function _getEpochRangeForRewards(uint256[] calldata rewardIds)
         internal
         returns (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim)
@@ -652,18 +623,19 @@ contract BoringChef is Auth, ERC20 {
         (uint256 balanceIndex, uint256 epochSharesBalance) =
             _findLatestBalanceUpdateForEpoch(minEpoch, userBalanceUpdates);
         // Cache the next balance update if it exists.
+        bool hasNextUpdate = balanceIndex < userBalanceUpdatesLength - 1;
         BalanceUpdate memory nextUserBalanceUpdate;
-        if (balanceIndex < userBalanceUpdatesLength - 1) {
+        if (hasNextUpdate) {
             nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
         }
 
         // Loop over each epoch from minEpoch to maxEpoch.
         for (uint48 epoch = minEpoch; epoch <= maxEpoch; ++epoch) {
             // Update the user's share balance if a new balance update occurs at the current epoch.
-            if (balanceIndex < userBalanceUpdatesLength - 1 && epoch == nextUserBalanceUpdate.epoch) {
+            if (epoch == nextUserBalanceUpdate.epoch && hasNextUpdate) {
                 epochSharesBalance = nextUserBalanceUpdate.totalSharesBalance;
-                balanceIndex++;
-                if (balanceIndex < userBalanceUpdatesLength - 1) {
+                hasNextUpdate = ++balanceIndex < userBalanceUpdatesLength - 1;
+                if (hasNextUpdate) {
                     nextUserBalanceUpdate = userBalanceUpdates[balanceIndex + 1];
                 }
             }
@@ -678,6 +650,56 @@ contract BoringChef is Auth, ERC20 {
                 userShareRatios[epochIndex] = epochSharesBalance.divWadDown(eligibleShares);
                 // Calculate the epoch duration.
                 epochDurations[epochIndex] = epochData.endTimestamp - epochData.startTimestamp;
+            }
+        }
+    }
+
+    /// @notice Computes the rewards per unique token for a set of reward campaigns.
+    /// @param rewardIds An array of identifiers for the reward campaigns to process.
+    /// @param rewardsToClaim An array of Reward structs containing the details for each reward campaign.
+    /// @param minEpoch The starting epoch from which rewards are calculated, adjusted to be the
+    ///        later of the reward campaign's minimum epoch or the user's first deposit epoch.
+    /// @param userShareRatios An array of precomputed share ratios for the user over a range of epochs,
+    ///        used to determine the user's portion of the rewards.
+    /// @param epochDurations An array of epoch durations corresponding to the time intervals over which
+    ///        rewards are computed.
+    /// @return uniqueTokens An array of unique token addresses for which rewards have been computed.
+    /// @return tokenAmounts An array of reward amounts corresponding to each unique token in `uniqueTokens`.
+    /// @return uniqueCount The number of unique tokens for which rewards have been computed.
+    function _computeRewardsPerUniqueToken(
+        uint256[] calldata rewardIds,
+        Reward[] memory rewardsToClaim,
+        uint48 minEpoch,
+        uint256[] memory userShareRatios,
+        uint256[] memory epochDurations
+    ) internal returns (address[] memory uniqueTokens, uint256[] memory tokenAmounts, uint256 uniqueCount) {
+        uint256 numRewards = rewardIds.length;
+        uniqueTokens = new address[](numRewards);
+        tokenAmounts = new uint256[](numRewards);
+        uniqueCount = 0;
+
+        // For each reward campaign, calculate the rewards owed and accumulate by token.
+        for (uint256 i = 0; i < numRewards; ++i) {
+            uint256 rewardsOwed = _calculateRewardsOwed(rewardsToClaim[i], minEpoch, userShareRatios, epochDurations);
+
+            if (rewardsOwed > 0) {
+                // Check if this reward token was already encountered.
+                bool found = false;
+                for (uint256 j = 0; j < uniqueCount; ++j) {
+                    if (uniqueTokens[j] == rewardsToClaim[i].token) {
+                        tokenAmounts[j] += rewardsOwed;
+                        found = true;
+                        break;
+                    }
+                }
+                // If not found, add a new entry.
+                if (!found) {
+                    uniqueTokens[uniqueCount] = rewardsToClaim[i].token;
+                    tokenAmounts[uniqueCount] = rewardsOwed;
+                    uniqueCount++;
+                }
+                // Emit the reward-claim event per reward campaign.
+                emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardIds[i], rewardsOwed);
             }
         }
     }
