@@ -234,13 +234,11 @@ contract BoringChef is Auth, ERC20 {
             _computeUserShareRatiosAndDurations(minEpoch, maxEpoch, userBalanceUpdates);
 
         // Get the rewards owed per unique token in rewardIds.
-        (address[] memory uniqueTokens, uint256[] memory tokenAmounts, uint256 uniqueCount) =
+        (address[] memory uniqueTokens, uint256[] memory tokenAmounts) =
             _computeRewardsPerUniqueToken(rewardIds, rewardsToClaim, minEpoch, userShareRatios, epochDurations);
 
-        // Finally, do one transfer per unique reward token.
-        for (uint256 i = 0; i < uniqueCount; ++i) {
-            boringSafe.transfer(uniqueTokens[i], msg.sender, tokenAmounts[i]);
-        }
+        // Transfer all reward tokens to the claimaint
+        boringSafe.transfer(uniqueTokens, tokenAmounts, msg.sender);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -665,18 +663,17 @@ contract BoringChef is Auth, ERC20 {
     ///        rewards are computed.
     /// @return uniqueTokens An array of unique token addresses for which rewards have been computed.
     /// @return tokenAmounts An array of reward amounts corresponding to each unique token in `uniqueTokens`.
-    /// @return uniqueCount The number of unique tokens for which rewards have been computed.
     function _computeRewardsPerUniqueToken(
         uint256[] calldata rewardIds,
         Reward[] memory rewardsToClaim,
         uint48 minEpoch,
         uint256[] memory userShareRatios,
         uint256[] memory epochDurations
-    ) internal returns (address[] memory uniqueTokens, uint256[] memory tokenAmounts, uint256 uniqueCount) {
+    ) internal returns (address[] memory uniqueTokens, uint256[] memory tokenAmounts) {
         uint256 numRewards = rewardIds.length;
         uniqueTokens = new address[](numRewards);
         tokenAmounts = new uint256[](numRewards);
-        uniqueCount = 0;
+        uint256 uniqueCount = 0;
 
         // For each reward campaign, calculate the rewards owed and accumulate by token.
         for (uint256 i = 0; i < numRewards; ++i) {
@@ -700,6 +697,14 @@ contract BoringChef is Auth, ERC20 {
                 }
                 // Emit the reward-claim event per reward campaign.
                 emit UserRewardsClaimed(msg.sender, rewardsToClaim[i].token, rewardIds[i], rewardsOwed);
+            }
+        }
+
+        // Resize the arrays to the actual number of unique tokens if needed
+        if (uniqueCount < numRewards) {
+            assembly ("memory-safe") {
+                mstore(uniqueTokens, uniqueCount)
+                mstore(tokenAmounts, uniqueCount)
             }
         }
     }
