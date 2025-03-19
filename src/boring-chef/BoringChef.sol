@@ -163,9 +163,9 @@ contract BoringChef is Auth, ERC20 {
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
 
-    /// @notice Allow a designated claimant to be able to claim rewards for a user
+    /// @notice Assign a claimant to be able to claim rewards for a user.
     /// @dev Can only be called by an authorized address
-    function redirectRewardAccrual(address user, address claimant) external requiresAuth {
+    function assignClaimantForUser(address user, address claimant) external requiresAuth {
         // Set the claimant as the address that can claim rewards on the user's behalf
         addressToClaimant[user] = claimant;
     }
