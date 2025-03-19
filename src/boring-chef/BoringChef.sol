@@ -26,6 +26,7 @@ contract BoringChef is Auth, ERC20 {
     error RewardClaimedAlready(uint256 rewardId);
     error CannotDisableRewardAccrualMoreThanOnce();
     error CannotEnableRewardAccrualMoreThanOnce();
+    error OnlyClaimant();
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -99,6 +100,9 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Maps users to a boolean indicating if they have disabled reward accrual
     mapping(address user => bool isDisabled) public addressToIsDisabled;
 
+    /// @dev Maps users to a claimant who can claim rewards on their behalf
+    mapping(address user => address claimant) public addressToClaimant;
+
     /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
     /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardId in that bucket (monotonically increasing) has been claimed.
@@ -127,6 +131,12 @@ contract BoringChef is Auth, ERC20 {
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Roll over to the next epoch.
+    /// @dev Can only be called by an authorized address.
+    function rollOverEpoch() external requiresAuth {
+        _rollOverEpoch();
+    }
+
     /// @notice Disable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function disableRewardAccrual(address user) external requiresAuth {
@@ -153,10 +163,11 @@ contract BoringChef is Auth, ERC20 {
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
 
-    /// @notice Roll over to the next epoch.
-    /// @dev Can only be called by an authorized address.
-    function rollOverEpoch() external requiresAuth {
-        _rollOverEpoch();
+    /// @notice Allow a designated claimant to be able to claim rewards for a user
+    /// @dev Can only be called by an authorized address
+    function redirectRewardAccrual(address user, address claimant) external requiresAuth {
+        // Set the claimant as the address that can claim rewards on the user's behalf
+        addressToClaimant[user] = claimant;
     }
 
     /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
@@ -218,27 +229,19 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Should be permissionless in normal circumstances.
     /// @param rewardIds The rewardIds to claim rewards for.
     function claimRewards(uint256[] calldata rewardIds) external requiresAuth {
-        // Get the epoch range for all rewards to claim and the corresponding Reward structs.
-        (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds);
+        // Claim rewards accrued to the caller
+        _claimRewards(rewardIds, msg.sender);
+    }
 
-        // Fetch the caller's balance update history.
-        BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[msg.sender];
-        uint48 firstEpochDeposited = userBalanceUpdates[0].epoch;
-        // Use the later of the minEpoch from rewards or the user's first deposit epoch.
-        if (firstEpochDeposited > minEpoch) {
-            minEpoch = firstEpochDeposited;
-        }
-
-        // Precompute the user's share ratios and epoch durations from minEpoch to maxEpoch.
-        (uint256[] memory userShareRatios, uint256[] memory epochDurations) =
-            _computeUserShareRatiosAndDurations(minEpoch, maxEpoch, userBalanceUpdates);
-
-        // Get the rewards owed per unique token in rewardIds.
-        (address[] memory uniqueTokens, uint256[] memory tokenAmounts) =
-            _computeRewardsPerUniqueToken(rewardIds, rewardsToClaim, minEpoch, userShareRatios, epochDurations);
-
-        // Transfer all reward tokens to the claimaint
-        boringSafe.transfer(uniqueTokens, tokenAmounts, msg.sender);
+    /// @notice Claims rewards (specified as rewardIds) to the caller on behalf of the specified user.
+    /// @dev Only the claimant for the specified user can call this function
+    /// @param rewardIds The rewardIds to claim rewards for.
+    /// @param user The address of the user to claim rewards on behalf of.
+    function claimRewardsOnBehalfOfUser(uint256[] calldata rewardIds, address user) external requiresAuth {
+        // Check the caller is the designated claimant for the user
+        if (addressToClaimant[user] != msg.sender) revert OnlyClaimant();
+        // Claim rewards accrued to the user to the claimant
+        _claimRewards(rewardIds, user);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -522,12 +525,41 @@ contract BoringChef is Auth, ERC20 {
         }
     }
 
+    /// @notice Claims rewards (specified as rewardIds) for the caller.
+    /// @dev Should be permissionless in normal circumstances.
+    /// @param rewardIds The rewardIds to claim rewards for.
+    /// @param user The address of the user to claim rewards for.
+    function _claimRewards(uint256[] calldata rewardIds, address user) internal {
+        // Get the epoch range for all rewards to claim and the corresponding Reward structs.
+        (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim) = _getEpochRangeForRewards(rewardIds, user);
+
+        // Fetch the caller's balance update history.
+        BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
+        uint48 firstEpochDeposited = userBalanceUpdates[0].epoch;
+        // Use the later of the minEpoch from rewards or the user's first deposit epoch.
+        if (firstEpochDeposited > minEpoch) {
+            minEpoch = firstEpochDeposited;
+        }
+
+        // Precompute the user's share ratios and epoch durations from minEpoch to maxEpoch.
+        (uint256[] memory userShareRatios, uint256[] memory epochDurations) =
+            _computeUserShareRatiosAndDurations(minEpoch, maxEpoch, userBalanceUpdates);
+
+        // Get the rewards owed per unique token in rewardIds.
+        (address[] memory uniqueTokens, uint256[] memory tokenAmounts) =
+            _computeRewardsPerUniqueToken(rewardIds, rewardsToClaim, minEpoch, userShareRatios, epochDurations);
+
+        // Transfer all reward tokens to the caller
+        boringSafe.transfer(uniqueTokens, tokenAmounts, msg.sender);
+    }
+
     /// @dev Retrieves the epoch range for a set of reward campaigns and marks them as claimed.
     /// @param rewardIds An array of reward campaign identifiers to process.
+    /// @param user The user to mark these rewards as claimed for.
     /// @return minEpoch The smallest starting epoch among the rewards to claim.
     /// @return maxEpoch The largest ending epoch among the rewards to claim.
     /// @return rewardsToClaim An array of Reward structs corresponding to each reward ID provided.
-    function _getEpochRangeForRewards(uint256[] calldata rewardIds)
+    function _getEpochRangeForRewards(uint256[] calldata rewardIds, address user)
         internal
         returns (uint48 minEpoch, uint48 maxEpoch, Reward[] memory rewardsToClaim)
     {
@@ -563,13 +595,13 @@ contract BoringChef is Auth, ERC20 {
                 if (i == 0) {
                     // Initialize cache with the reward bucket and bit field
                     cachedRewardBucket = rewardBucket;
-                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
                 } else if (cachedRewardBucket != rewardBucket) {
                     // Write back the cached claim data to persistent storage
-                    userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
+                    userToRewardBucketToClaimedRewards[user][cachedRewardBucket] = cachedClaimedRewards;
                     // Updated cache with the new reward bucket and rewards bit field
                     cachedRewardBucket = rewardBucket;
-                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[msg.sender][rewardBucket];
+                    cachedClaimedRewards = userToRewardBucketToClaimedRewards[user][rewardBucket];
                 }
 
                 // The bit offset for rewardId within that bucket
@@ -598,7 +630,7 @@ contract BoringChef is Auth, ERC20 {
             }
         }
         // Write back the final cache to persistent storage
-        userToRewardBucketToClaimedRewards[msg.sender][cachedRewardBucket] = cachedClaimedRewards;
+        userToRewardBucketToClaimedRewards[user][cachedRewardBucket] = cachedClaimedRewards;
     }
 
     /// @dev Computes the user's share ratios and epoch durations for every epoch between minEpoch and maxEpoch.
