@@ -99,6 +99,9 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Maps users to a boolean indicating if they have disabled reward accrual
     mapping(address user => bool isDisabled) public addressToIsDisabled;
 
+    /// @dev Maps users to a claimant who can claim rewards on their behalf
+    mapping(address user => address claimant) public addressToClaimant;
+
     /// @dev Nested mapping to efficiently keep track of claimed rewards per user
     /// @dev A rewardBucket contains batches of 256 contiguous rewardIds (Bucket 0: rewardIds 0-255, Bucket 1: rewardIds 256-527, ...)
     /// @dev claimedRewards is a 256 bit bit-field where each bit represents if a rewardId in that bucket (monotonically increasing) has been claimed.
@@ -127,6 +130,12 @@ contract BoringChef is Auth, ERC20 {
                        REWARD DISTRIBUTION LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Roll over to the next epoch.
+    /// @dev Can only be called by an authorized address.
+    function rollOverEpoch() external requiresAuth {
+        _rollOverEpoch();
+    }
+
     /// @notice Disable reward accrual for a given address
     /// @dev Can only be called by an authorized address
     function disableRewardAccrual(address user) external requiresAuth {
@@ -153,10 +162,16 @@ contract BoringChef is Auth, ERC20 {
         _increaseNextEpochParticipation(user, uint128(balanceOf[user]));
     }
 
-    /// @notice Roll over to the next epoch.
-    /// @dev Can only be called by an authorized address.
-    function rollOverEpoch() external requiresAuth {
-        _rollOverEpoch();
+    /// @notice Redirect a user's rewards to a designated claimant
+    /// @dev Can only be called by an authorized address
+    function redirectRewardAccrual(address user, address claimant) external requiresAuth {
+        uint256 amount = uint128(balanceOf[user]);
+
+        // Decrease the user's epoch participation by their total balance
+        _decreaseCurrentAndNextEpochParticipation(user, amount);
+
+        // Increase the claimant's epoch participation by the user's total balance
+        _increaseNextEpochParticipation(claimant, amount);
     }
 
     /// @notice Distribute rewards retroactively to users deposited during a given epoch range for multiple campaigns.
@@ -251,11 +266,17 @@ contract BoringChef is Auth, ERC20 {
         // Transfer shares from msg.sender to "to"
         success = super.transfer(to, amount);
 
+        // Get the claimants for the sender and receiver of the transfer
+        address senderClaimant = addressToClaimant[msg.sender];
+        address receiverClaimant = addressToClaimant[to];
+
         // Account for the transfer for the sender and forfeit incentives for current epoch for msg.sender
-        _decreaseCurrentAndNextEpochParticipation(msg.sender, uint128(amount));
+        _decreaseCurrentAndNextEpochParticipation(
+            senderClaimant == address(0) ? msg.sender : senderClaimant, uint128(amount)
+        );
 
         // Account for the transfer for the recipient and transfer incentives for next epoch onwards to "to"
-        _increaseNextEpochParticipation(to, uint128(amount));
+        _increaseNextEpochParticipation(receiverClaimant == address(0) ? to : receiverClaimant, uint128(amount));
     }
 
     /// @notice Transfer shares from one user to another
@@ -269,11 +290,15 @@ contract BoringChef is Auth, ERC20 {
         // Transfer shares from "from" to "to"
         success = super.transferFrom(from, to, amount);
 
+        // Get the claimants for the sender and receiver of the transferFrom
+        address senderClaimant = addressToClaimant[from];
+        address receiverClaimant = addressToClaimant[to];
+
         // Account for the transfer for the sender and forfeit incentives for current epoch for "from"
-        _decreaseCurrentAndNextEpochParticipation(from, uint128(amount));
+        _decreaseCurrentAndNextEpochParticipation(senderClaimant == address(0) ? from : senderClaimant, uint128(amount));
 
         // Account for the transfer for the recipient and transfer incentives for next epoch onwards to "to"
-        _increaseNextEpochParticipation(to, uint128(amount));
+        _increaseNextEpochParticipation(receiverClaimant == address(0) ? to : receiverClaimant, uint128(amount));
     }
 
     /*//////////////////////////////////////////////////////////////
