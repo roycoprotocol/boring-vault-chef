@@ -28,29 +28,29 @@
         "address": "0x0000000000000000000000000000000000000000",
         "name": "txBundlerAddress"
       },
-      "deploymentFileName": "addresses/SonicMainnet/RoycoSonicNative.json"
+      "deploymentFileName": "addresses/SonicMainnet/RoycoMetaVaultSonic.json"
     },
     "rolesAuthorityConfiguration": {
-      "rolesAuthorityDeploymentName": "Royco USDC Sonic Roles Authority V0.1"
+      "rolesAuthorityDeploymentName": "Sonic USD Roles Authority V0.1"
     },
     "lensConfiguration": {
       "lensDeploymentName": "Arctic Architecture Lens V0.1"
     },
     "boringVaultConfiguration": {
-      "boringVaultDeploymentName": "Royco USDC Sonic Boring Vault V0.1",
-      "boringVaultName": "Royco USDC Sonic Vault",
-      "boringVaultSymbol": "ROY-USDC-SONIC",
+      "boringVaultDeploymentName": "Sonic USD Boring Vault V0.1",
+      "boringVaultName": "Sonic USD",
+      "boringVaultSymbol": "scUSD",
       "boringVaultDecimals": 6
     },
     "managerConfiguration": {
-      "managerDeploymentName": "Royco USDC Sonic Manager V0.1",
+      "managerDeploymentName": "Sonic USD Manager V0.1",
       "balancerVaultAddressOrName": {
         "address": "0x0000000000000000000000000000000000000000",
         "name": "balancerVault"
       }
     },
     "accountantConfiguration": {
-      "accountantDeploymentName": "Royco USDC Sonic Accountant V0.1",
+      "accountantDeploymentName": "Sonic USD Accountant V0.1",
       "accountantParameters": {
         "kind": {
           "variableRate": true,
@@ -58,7 +58,7 @@
         },
         "payoutConfiguration": {
           "payoutTo": "0x0000000000000000000000000000000000000000",
-          "optionalPaymentSplitterName": "Royco USDC Sonic Payment Splitter V0.1",
+          "optionalPaymentSplitterName": "Sonic USD Payment Splitter V0.1",
           "splits": [
             {
               "to": "0x0463E60C7cE10e57911AB7bD1667eaa21de3e79b",
@@ -80,20 +80,20 @@
           "minimumUpateDelayInSeconds": 21600,
           "performanceFee": 1000,
           "platformFee": 0,
-          "startingExchangeRate": 1000000000000000000
+          "startingExchangeRate": 1000000
         }
       }
     },
     "tellerConfiguration": {
-      "tellerDeploymentName": "Royco USDC Sonic Teller V0.1",
+      "tellerDeploymentName": "Sonic USD Teller V0.1",
       "tellerParameters": {
-        "allowPublicDeposits": true,
+        "allowPublicDeposits": false,
         "shareLockPeriod": 86400,
         "kind": {
-          "teller": true,
+          "teller": false,
           "tellerWithRemediation": false,
           "tellerWithCcip": false,
-          "tellerWithLayerZero": false
+          "tellerWithLayerZero": true
         },
         "layerZero": {
           "endpointAddressOrName": {
@@ -120,11 +120,11 @@
       }
     },
     "boringQueueConfiguration": {
-      "boringQueueDeploymentName": "Royco USDC Sonic Boring Queue V0.1",
-      "boringQueueSolverName": "Royco USDC Sonic Boring Solver V0.1",
+      "boringQueueDeploymentName": "Sonic USD Boring Queue V0.1",
+      "boringQueueSolverName": "Sonic USD Boring Solver V0.1",
       "queueParameters": {
-        "allowPublicWithdrawals": true,
-        "allowPublicSelfWithdrawals": true,
+        "allowPublicWithdrawals": false,
+        "allowPublicSelfWithdrawals": false,
         "kind": {
           "boringQueue": true,
           "boringQueueWithTracking": false
@@ -132,13 +132,13 @@
       }
     },
     "droneConfiguration": {
-      "droneDeploymentBaseName": "Royco USDC Sonic Drone V0.1",
+      "droneDeploymentBaseName": "Sonic USD Drone V0.1",
       "droneCount": 0,
       "safeGasToForwardNative": 21000
     },
     "pauserConfiguration": {
       "shouldDeploy": true,
-      "pauserDeploymentName": "Royco USDC Sonic Pauser V0.1",
+      "pauserDeploymentName": "Sonic USD Pauser V0.1",
       "makeGenericPauser": ["0x0000000000000000000000000000000000000000"],
       "makeGenericUnpauser": ["0x0000000000000000000000000000000000000000"],
       "makePauseAll": ["0x0000000000000000000000000000000000000000"],
@@ -152,7 +152,7 @@
     },
     "timelockConfiguration": {
       "shouldDeploy": true,
-      "timelockDeploymentName": "Royco USDC Sonic Timelock V0.1",
+      "timelockDeploymentName": "Sonic USD Timelock V0.1",
       "timelockParameters": {
         "minDelay": 300,
         "proposers": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
@@ -166,8 +166,8 @@
           "address": "0x0000000000000000000000000000000000000000",
           "name": "USDC"
         },
-        "allowDeposits": true,
-        "allowWithdraws": true,
+        "allowDeposits": false,
+        "allowWithdraws": false,
         "sharePremium": 0
       }
     ],
