@@ -377,8 +377,15 @@ contract BoringChef is Auth, ERC20 {
         // Cache current epoch for gas savings
         uint48 currEpoch = currentEpoch++;
 
-        // Get the current and next epoch data.
+        // Get the current epoch data
         Epoch storage currentEpochData = epochs[currEpoch];
+
+        // Skip rollOver if the current epoch started at this timestamp (multiple rebalances in the same block)
+        if (currentEpochData.startTimestamp == block.timestamp) {
+            return;
+        }
+
+        // Get the next epoch data
         Epoch storage nextEpochData = epochs[++currEpoch];
 
         // Update the current epoch's end timestamp and the next epoch's start timestamp.
