@@ -4,7 +4,7 @@
       "privateKeyEnvName": "BORING_DEVELOPER",
       "chainName": "mainnet",
       "evmVersion": "shanghai",
-      "desiredNumberOfDeploymentTxs": 10,
+      "desiredNumberOfDeploymentTxs": 6,
       "txBundlerAddressOrName": {
         "address": "0x0000000000000000000000000000000000000000",
         "name": "txBundlerAddress"
