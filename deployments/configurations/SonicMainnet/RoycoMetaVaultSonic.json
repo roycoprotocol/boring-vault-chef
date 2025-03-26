@@ -63,7 +63,7 @@
         },
         "accountantDeploymentParameters": {
           "allowedExchangeRateChangeLower": 9900,
-          "allowedExchangeRateChangeUpper": 10000,
+          "allowedExchangeRateChangeUpper": 10100,
           "baseAddressOrName": {
             "address": "0x0000000000000000000000000000000000000000",
             "name": "USDC"
@@ -145,9 +145,9 @@
       "shouldDeploy": true,
       "timelockDeploymentName": "Royco USDC Timelock V0.1",
       "timelockParameters": {
+        "executors": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
         "minDelay": 300,
-        "proposers": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
-        "executors": ["0xf8553c8552f906C19286F21711721E206EE4909E"]
+        "proposers": ["0xf8553c8552f906C19286F21711721E206EE4909E"]
       }
     },
     "accountantAssets": [],

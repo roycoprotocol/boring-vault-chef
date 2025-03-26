@@ -63,7 +63,7 @@
         },
         "accountantDeploymentParameters": {
           "allowedExchangeRateChangeLower": 9900,
-          "allowedExchangeRateChangeUpper": 10000,
+          "allowedExchangeRateChangeUpper": 10100,
           "baseAddressOrName": {
             "address": "0x0000000000000000000000000000000000000000",
             "name": "USDC"
@@ -71,7 +71,7 @@
           "minimumUpateDelayInSeconds": 21600,
           "performanceFee": 1000,
           "platformFee": 0,
-          "startingExchangeRate": 1000000000000000000
+          "startingExchangeRate": 1000000
         }
       }
     },
@@ -85,28 +85,6 @@
           "tellerWithRemediation": false,
           "tellerWithCcip": false,
           "tellerWithLayerZero": false
-        },
-        "layerZero": {
-          "endpointAddressOrName": {
-            "address": "0x0000000000000000000000000000000000000000",
-            "name": "LayerZeroEndPoint"
-          },
-          "lzTokenAddressOrName": {
-            "address": "0x0000000000000000000000000000000000000000",
-            "name": "ZRO"
-          },
-          "lzChains": [
-            {
-              "chainId": 30101,
-              "allowMessagesFrom": true,
-              "allowMessagesTo": true,
-              "targetTellerOrSelf": {
-                "address": "0x0000000000000000000000000000000000000000",
-                "self": true
-              },
-              "messageGasLimit": 100000
-            }
-          ]
         }
       }
     },
@@ -115,7 +93,7 @@
       "boringQueueSolverName": "Sonic Royco USDC Boring Solver V0.1",
       "queueParameters": {
         "allowPublicWithdrawals": true,
-        "allowPublicSelfWithdrawals": true,
+        "allowPublicSelfWithdrawals": false,
         "kind": {
           "boringQueue": true,
           "boringQueueWithTracking": false
@@ -145,9 +123,9 @@
       "shouldDeploy": true,
       "timelockDeploymentName": "Sonic Royco USDC Timelock V0.1",
       "timelockParameters": {
+        "executors": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
         "minDelay": 300,
-        "proposers": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
-        "executors": ["0xf8553c8552f906C19286F21711721E206EE4909E"]
+        "proposers": ["0xf8553c8552f906C19286F21711721E206EE4909E"]
       }
     },
     "accountantAssets": [],
