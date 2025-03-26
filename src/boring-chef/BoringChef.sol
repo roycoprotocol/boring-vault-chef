@@ -375,7 +375,7 @@ contract BoringChef is Auth, ERC20 {
     /// @dev Should be called on every boring vault rebalance.
     function _rollOverEpoch() internal {
         // Cache current epoch for gas savings
-        uint48 currEpoch = currentEpoch++;
+        uint48 currEpoch = currentEpoch;
 
         // Get the current epoch data
         Epoch storage currentEpochData = epochs[currEpoch];
@@ -395,8 +395,8 @@ contract BoringChef is Auth, ERC20 {
         // Update the eligible shares for the next epoch by rolling them over.
         nextEpochData.eligibleShares += currentEpochData.eligibleShares;
 
-        // Emit event for epoch start
-        emit EpochStarted(currEpoch, nextEpochData.eligibleShares, block.timestamp);
+        // Increment the currentEpoch and emit event for epoch start
+        emit EpochStarted(++currentEpoch, nextEpochData.eligibleShares, block.timestamp);
     }
 
     /// @notice Increase the user's share balance for the next epoch
