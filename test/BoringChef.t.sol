@@ -314,6 +314,8 @@ contract BoringChefTest is Test {
             recordBalance2, depositAmount1 + depositAmount2, "Second record balance should be the sum of both deposits"
         );
 
+        skip(1);
+
         // -------- Rollover Again to Activate the Deposits --------
         boringVault.rollOverEpoch();
         // Now the deposits become eligible. Current epoch has increased by one.
@@ -519,6 +521,9 @@ contract BoringChefTest is Test {
         // ─────────────────────────────────────────────────────────────
         // PHASE 2: Deposit in a later epoch
         // ─────────────────────────────────────────────────────────────
+
+        skip(1);
+
         // Now mint and deposit 2×withdrawAmount tokens.
         token.mint(address(this), 2 * withdrawAmount);
         token.approve(address(boringVault), 2 * withdrawAmount);
@@ -540,6 +545,9 @@ contract BoringChefTest is Test {
         // ─────────────────────────────────────────────────────────────
         // PHASE 3: Deposit multiple times in a later epoch
         // ─────────────────────────────────────────────────────────────
+
+        skip(1);
+
         // Now mint and deposit 2×withdrawAmount tokens.
         token.mint(address(this), 2 * withdrawAmount);
         token.approve(address(boringVault), 2 * withdrawAmount);
@@ -637,6 +645,7 @@ contract BoringChefTest is Test {
         // Roll over the epochs.
         for (uint256 i = 0; i < epochs; i++) {
             boringVault.rollOverEpoch();
+            skip(1);
         }
 
         // Withdraw the tokens from the vault.
@@ -950,6 +959,8 @@ contract BoringChefTest is Test {
         (uint256 recEpoch2, uint256 recBalance2) = boringVault.balanceUpdates(anotherUser, 0);
         assertEq(recEpoch2, boringVault.currentEpoch() + 1, "Balance update epoch should be currentEpoch");
         assertEq(recBalance2, transferShares, "Balance update balance should be transferShares");
+
+        skip(1);
 
         // Roll over to the next epoch.
         boringVault.rollOverEpoch();
