@@ -31,26 +31,26 @@
       "deploymentFileName": "addresses/SonicMainnet/RoycoMetaVaultSonic.json"
     },
     "rolesAuthorityConfiguration": {
-      "rolesAuthorityDeploymentName": "Royco USDC Roles Authority V0.1"
+      "rolesAuthorityDeploymentName": "Royco USDC Roles Authority V0.2"
     },
     "lensConfiguration": {
-      "lensDeploymentName": "Arctic Architecture Lens V0.1"
+      "lensDeploymentName": "Arctic Architecture Lens V0.2"
     },
     "boringVaultConfiguration": {
-      "boringVaultDeploymentName": "Royco USDC Boring Vault V0.1",
+      "boringVaultDeploymentName": "Royco USDC Boring Vault V0.2",
       "boringVaultName": "Royco USDC Vault",
       "boringVaultSymbol": "royUSDC",
       "boringVaultDecimals": 6
     },
     "managerConfiguration": {
-      "managerDeploymentName": "Royco USDC Manager V0.1",
+      "managerDeploymentName": "Royco USDC Manager V0.2",
       "balancerVaultAddressOrName": {
         "address": "0x0000000000000000000000000000000000000000",
         "name": "balancerVault"
       }
     },
     "accountantConfiguration": {
-      "accountantDeploymentName": "Royco USDC Accountant V0.1",
+      "accountantDeploymentName": "Royco USDC Accountant V0.2",
       "accountantParameters": {
         "kind": {
           "variableRate": true,
@@ -58,7 +58,7 @@
         },
         "payoutConfiguration": {
           "payoutTo": "0x0000000000000000000000000000000000000001",
-          "optionalPaymentSplitterName": "Royco USDC Payment Splitter V0.1",
+          "optionalPaymentSplitterName": "Royco USDC Payment Splitter V0.2",
           "splits": []
         },
         "accountantDeploymentParameters": {
@@ -76,7 +76,7 @@
       }
     },
     "tellerConfiguration": {
-      "tellerDeploymentName": "Royco USDC Teller V0.1",
+      "tellerDeploymentName": "Royco USDC Teller V0.2",
       "tellerParameters": {
         "allowPublicDeposits": false,
         "shareLockPeriod": 86400,
@@ -111,8 +111,8 @@
       }
     },
     "boringQueueConfiguration": {
-      "boringQueueDeploymentName": "Royco USDC Boring Queue V0.1",
-      "boringQueueSolverName": "Royco USDC Boring Solver V0.1",
+      "boringQueueDeploymentName": "Royco USDC Boring Queue V0.2",
+      "boringQueueSolverName": "Royco USDC Boring Solver V0.2",
       "queueParameters": {
         "allowPublicWithdrawals": false,
         "allowPublicSelfWithdrawals": false,
@@ -123,13 +123,13 @@
       }
     },
     "droneConfiguration": {
-      "droneDeploymentBaseName": "Royco USDC Drone V0.1",
+      "droneDeploymentBaseName": "Royco USDC Drone V0.2",
       "droneCount": 0,
       "safeGasToForwardNative": 21000
     },
     "pauserConfiguration": {
       "shouldDeploy": true,
-      "pauserDeploymentName": "Royco USDC Pauser V0.1",
+      "pauserDeploymentName": "Royco USDC Pauser V0.2",
       "makeGenericPauser": ["0x0000000000000000000000000000000000000000"],
       "makeGenericUnpauser": ["0x0000000000000000000000000000000000000000"],
       "makePauseAll": ["0x0000000000000000000000000000000000000000"],
@@ -143,7 +143,7 @@
     },
     "timelockConfiguration": {
       "shouldDeploy": true,
-      "timelockDeploymentName": "Royco USDC Timelock V0.1",
+      "timelockDeploymentName": "Royco USDC Timelock V0.2",
       "timelockParameters": {
         "executors": ["0xf8553c8552f906C19286F21711721E206EE4909E"],
         "minDelay": 300,
