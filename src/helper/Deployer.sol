@@ -3,11 +3,19 @@ pragma solidity 0.8.21;
 
 import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {CREATE3} from "@solmate/utils/CREATE3.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 contract Deployer is Auth {
-    mapping(address => bool) public isDeployer;
+    using Address for address;
 
-    error Deployer__NotADeployer();
+    /**
+     * @notice Contains data needed to send a transaction.
+     */
+    struct Tx {
+        address target;
+        bytes data;
+        uint256 value;
+    }
 
     /**
      * @notice Emitted on `deployContract` calls.
@@ -52,6 +60,13 @@ contract Deployer is Auth {
         emit ContractDeployed(name, contractAddress, creationCodeHash);
 
         return contractAddress;
+    }
+
+    function bundleTxs(Tx[] calldata txs) external requiresAuth {
+        uint256 txsLength = txs.length;
+        for (uint256 i; i < txsLength; i++) {
+            txs[i].target.functionCallWithValue(txs[i].data, txs[i].value);
+        }
     }
 
     function getAddress(string calldata name) external view returns (address) {
