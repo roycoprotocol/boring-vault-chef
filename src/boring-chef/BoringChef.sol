@@ -453,9 +453,12 @@ contract BoringChef is Auth, ERC20 {
         // Cache the user's balance updates and its length.
         BalanceUpdate[] storage userBalanceUpdates = balanceUpdates[user];
         uint256 balanceUpdatesLength = userBalanceUpdates.length;
-        // It is assumed that len > 0 when withdrawing.
-        BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[balanceUpdatesLength - 1];
+        // If there are no balances to decrease for this user, nothing to modify.
+        if (balanceUpdatesLength == 0) {
+            return;
+        }
 
+        BalanceUpdate storage lastBalanceUpdate = userBalanceUpdates[balanceUpdatesLength - 1];
         // CASE 1: No deposit for the next epoch.
         if (lastBalanceUpdate.epoch <= currEpoch) {
             // CASE 1.1: Last balance update is for the current epoch.
